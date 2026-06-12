@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>온라인 사무실</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="logo-icon">🏢</span>
+        <h1>온라인 사무실</h1>
+        <p>실시간 다중 사용자 가상 오피스</p>
+      </div>
+      <div class="login-form">
+        <div class="form-group">
+          <label for="playerName">이름</label>
+          <input type="text" id="playerName" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <div role="group" aria-label="아바타 색상 선택">
+            <div class="color-picker">
+              <div class="color-option selected" style="background:#4fc3f7" data-color="#4fc3f7"></div>
+              <div class="color-option" style="background:#81c784" data-color="#81c784"></div>
+              <div class="color-option" style="background:#ffb74d" data-color="#ffb74d"></div>
+              <div class="color-option" style="background:#f06292" data-color="#f06292"></div>
+              <div class="color-option" style="background:#ce93d8" data-color="#ce93d8"></div>
+              <div class="color-option" style="background:#4db6ac" data-color="#4db6ac"></div>
+              <div class="color-option" style="background:#ff8a65" data-color="#ff8a65"></div>
+              <div class="color-option" style="background:#a5d6a7" data-color="#a5d6a7"></div>
+            </div>
+          </div>
+
+        <button id="joinBtn" class="join-btn">입장하기</button>
+      </div>
+      <div id="loginError" class="login-error"></div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen" class="game-screen hidden">
+    <div class="game-layout">
+
+      <!-- Left Panel: Participants -->
+      <div class="left-panel">
+        <div class="panel-header">
+          <span class="panel-icon">👥</span>
+          <span>참여자</span>
+          <span id="playerCount" class="player-count">0</span>
+        </div>
+        <div id="playerList" class="player-list"></div>
+        <div class="panel-footer">
+          <div id="myZoneInfo" class="zone-info">로비</div>
+        </div>
+      </div>
+
+      <!-- Center: Canvas -->
+      <div class="canvas-container">
+        <div class="canvas-header">
+          <span id="roomTitle" class="room-title">🏢 온라인 사무실</span>
+          <div class="canvas-controls">
+            <button id="avatarCustomBtn" class="ctrl-btn" title="아바타 꾸미기">👤</button>
+            <button id="helpBtn" class="ctrl-btn" title="도움말">❓</button>
+          </div>
+        </div>
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
+        <div class="canvas-footer">
+          <div class="controls-hint">
+            <span>이동: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 또는 화살표키 / 클릭으로 이동</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: Chat -->
+      <div class="right-panel">
+        <div class="panel-header">
+          <span class="panel-icon">💬</span>
+          <span>채팅</span>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-area">
+          <input type="text" id="chatInput" placeholder="메시지 입력..." maxlength="300" autocomplete="off" aria-label="채팅 메시지 입력" />
+          <button id="chatSendBtn" class="send-btn">전송</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div class="bottom-bar">
+      <div class="bottom-left">
+        <div id="connectionStatus" class="status-badge connected">● 연결됨</div>
+      </div>
+      <div class="bottom-center">
+        <button id="micBtn" class="mic-btn muted" title="마이크 토글">
+          <span id="micIcon">🎤</span>
+          <span id="micLabel">마이크 꺼짐</span>
+        </button>
+      </div>
+      <div class="bottom-right">
+        <div id="nearbyInfo" class="nearby-info">근처 사용자 없음</div>
+        <button id="presQuickBtn" class="owner-mode-btn" title="프레젠테이션 시작/참가">🎬 발표</button>
+        <button id="ownerModeBtn" class="owner-mode-btn" title="건물주 모드">🏠 건물주</button>
+      </div>
+    </div>
+
+    <!-- Mobile Drawers -->
+    <div id="mobileParticipantsDrawer" class="mobile-drawer hidden">
+      <div class="mobile-drawer-handle"></div>
+      <div class="panel-header">
+        <span class="panel-icon">👥</span><span>참여자</span>
+        <span id="playerCountMobile" class="player-count">0</span>
+      </div>
+      <div id="playerListMobile" class="player-list"></div>
+    </div>
+    <div id="mobileChatDrawer" class="mobile-drawer chat-drawer hidden">
+      <div class="mobile-drawer-handle"></div>
+      <div class="panel-header">
+        <span class="panel-icon">💬</span><span>채팅</span>
+      </div>
+      <div id="chatMessagesMobile" class="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chatInputMobile" placeholder="메시지..." maxlength="300" autocomplete="off" aria-label="채팅 메시지 입력" />
+        <button id="chatSendBtnMobile" class="send-btn">전송</button>
+      </div>
+    </div>
+    <div id="mobileDrawerOverlay" class="mobile-overlay hidden"></div>
+
+    <!-- Virtual Joystick -->
+    <div id="virtualJoystick" class="virtual-joystick">
+      <button class="joy-btn joy-up" data-dir="up">▲</button>
+      <div class="joy-middle-row">
+        <button class="joy-btn joy-left" data-dir="left">◀</button>
+        <div class="joy-center"></div>
+        <button class="joy-btn joy-right" data-dir="right">▶</button>
+      </div>
+      <button class="joy-btn joy-down" data-dir="down">▼</button>
+    </div>
+
+    <!-- Mobile Bottom Bar -->
+    <div id="mobileBottomBar" class="mobile-bottom-bar">
+      <button class="mob-btn" id="mobMicBtn">🎤<span>마이크</span></button>
+      <button class="mob-btn" id="mobChatBtn">💬<span>채팅</span></button>
+      <button class="mob-btn" id="mobPeopleBtn">👥<span>참여자</span></button>
+      <button class="mob-btn" id="mobOwnerBtn">🏠<span>건물주</span></button>
+    </div>
+  </div>
+
+  <!-- Avatar Customizer Modal (in-game) -->
+  <div id="avatarModal" class="modal hidden">
+    <div class="modal-content av-modal-content">
+      <div class="modal-header">
+        <h3>👤 아바타 꾸미기</h3>
+        <button id="closeAvatarModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body av-modal-body">
+        <div class="av-modal-left">
+          <canvas id="avatarModalPreview" width="120" height="120"></canvas>
+          <span class="preview-label">미리보기</span>
+        </div>
+        <div class="av-modal-right">
+          <div class="av-section">
+            <div class="av-section-label">피부 톤</div>
+            <div class="skin-picker" id="modalSkinPicker">
+              <div class="skin-option selected" style="background:#FFDAB9" data-skin="#FFDAB9"></div>
+              <div class="skin-option" style="background:#F5CBA7" data-skin="#F5CBA7"></div>
+              <div class="skin-option" style="background:#E59866" data-skin="#E59866"></div>
+              <div class="skin-option" style="background:#CA6F1E" data-skin="#CA6F1E"></div>
+              <div class="skin-option" style="background:#784212" data-skin="#784212"></div>
+              <div class="skin-option" style="background:#F8BBD0" data-skin="#F8BBD0"></div>
+            </div>
+          </div>
+          <div class="av-section">
+            <div class="av-section-label">표정</div>
+            <div class="avatar-option-row" id="modalFacePicker" data-group="face">
+              <div class="av-opt selected" data-val="smile">😊 보통</div>
+              <div class="av-opt" data-val="cool">😎 쿨</div>
+              <div class="av-opt" data-val="wink">😉 윙크</div>
+              <div class="av-opt" data-val="surprised">😮 놀람</div>
+              <div class="av-opt" data-val="angry">😤 화남</div>
+              <div class="av-opt" data-val="sad">😢 슬픔</div>
+            </div>
+          </div>
+          <div class="av-section">
+            <div class="av-section-label">옷</div>
+            <div class="avatar-option-row" id="modalOutfitPicker" data-group="outfit">
+              <div class="av-opt selected" data-val="none">기본</div>
+              <div class="av-opt" data-val="suit">👔 정장</div>
+              <div class="av-opt" data-val="casual">👕 캐주얼</div>
+              <div class="av-opt" data-val="hoodie">🧥 후디</div>
+              <div class="av-opt" data-val="dress">👗 드레스</div>
+              <div class="av-opt" data-val="chef">🍳 셰프</div>
+            </div>
+          </div>
+          <div class="av-section">
+            <div class="av-section-label">모자</div>
+            <div class="avatar-option-row" id="modalHatPicker" data-group="hat">
+              <div class="av-opt selected" data-val="none">없음</div>
+              <div class="av-opt" data-val="cap">🧢 캡</div>
+              <div class="av-opt" data-val="crown">👑 왕관</div>
+              <div class="av-opt" data-val="santa">🎅 산타</div>
+              <div class="av-opt" data-val="party">🎉 파티</div>
+              <div class="av-opt" data-val="witch">🧙 마녀</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="av-modal-footer">
+        <button id="applyAvatarBtn" class="join-btn" style="width:100%;margin-top:0">적용하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner Mode Panel -->
+  <div id="ownerPanel" class="owner-panel hidden">
+    <div class="owner-panel-header">
+      <span>🏠 건물주 모드</span>
+      <button id="ownerPanelClose" class="owner-panel-close">✕</button>
+    </div>
+
+    <div class="owner-section">
+      <div class="owner-section-title">가구 추가</div>
+      <div class="furniture-palette" id="furniturePalette">
+        <div class="palette-item" data-type="desk" data-w="70" data-h="40">🖥 책상</div>
+        <div class="palette-item" data-type="conference-table" data-w="280" data-h="120">📋 회의테이블</div>
+        <div class="palette-item" data-type="sofa" data-w="100" data-h="50">🛋 소파</div>
+        <div class="palette-item" data-type="plant" data-w="30" data-h="30">🌿 식물</div>
+        <div class="palette-item" data-type="shelf" data-w="90" data-h="20">📚 책장</div>
+        <div class="palette-item" data-type="cabinet" data-w="30" data-h="80">🗄 캐비넷</div>
+        <div class="palette-item" data-type="coffee" data-w="50" data-h="40">☕ 커피머신</div>
+        <div class="palette-item" data-type="whiteboard" data-w="120" data-h="70">📝 화이트보드</div>
+        <div class="palette-item" data-type="round-table" data-w="60" data-h="60">⭕ 원형테이블</div>
+        <div class="palette-item" data-type="fridge" data-w="40" data-h="60">🧊 냉장고</div>
+        <div class="palette-item" data-type="reception" data-w="160" data-h="50">🏢 안내데스크</div>
+        <div class="palette-item" data-type="partition" data-w="8" data-h="100">🚧 파티션</div>
+      </div>
+    </div>
+
+    <div class="owner-section">
+      <div class="owner-section-title">구역 크기 조정</div>
+      <div class="zone-resize-controls">
+        <div class="zone-resize-row">
+          <label for="officeW">개인사무실 너비</label>
+          <input type="range" id="officeW" min="200" max="700" step="40" value="480">
+          <span id="officeWVal">480</span>
+        </div>
+        <div class="zone-resize-row">
+          <label for="zoneH">구역 경계 높이</label>
+          <input type="range" id="zoneH" min="200" max="600" step="40" value="380">
+          <span id="zoneHVal">380</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="owner-section">
+      <div class="owner-section-title">선택된 가구</div>
+      <div id="selectedFurnitureInfo" class="selected-info">가구를 클릭하세요</div>
+      <div class="owner-actions">
+        <button id="deleteFurnitureBtn" class="owner-btn danger" disabled>🗑 삭제</button>
+        <button id="duplicateFurnitureBtn" class="owner-btn" disabled>📋 복제</button>
+      </div>
+    </div>
+
+    <div class="owner-section">
+      <div class="owner-section-title">저장/복원</div>
+      <div class="owner-actions">
+        <button id="saveLayoutBtn" class="owner-btn accent">💾 레이아웃 저장</button>
+        <button id="resetLayoutBtn" class="owner-btn danger">↩ 기본값 복원</button>
+      </div>
+    </div>
+
+    <div class="owner-hint">
+      💡 가구 드래그로 이동 · 모서리 드래그로 크기조정 · 우클릭으로 삭제
+    </div>
+  </div>
+
+  <!-- 진행자 스팟 힌트 -->
+  <div id="presSpotHint" class="pres-spot-hint hidden">
+    <span>🎤 진행자 자리입니다</span>
+    <button id="presStartBtn" class="pres-start-btn">프레젠테이션 시작</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       진행자 전체화면 (Presenter View)
+       좌: 화면공유 영역  |  우: 사이드 패널
+  ══════════════════════════════════════════════════ -->
+  <div id="presenterView" class="pres-fullscreen hidden">
+
+    <!-- 상단 툴바 -->
+    <div class="pres-toolbar">
+      <div class="pres-toolbar-left">
+        <span class="pres-logo">🎬</span>
+        <span class="pres-title-text">프레젠테이션 진행 중</span>
+        <span id="presTimerDisplay" class="pres-timer">00:00</span>
+      </div>
+      <div class="pres-toolbar-center">
+        <button id="presShareScreenBtn" class="pres-tb-btn share" title="화면 공유">
+          <span class="pres-tb-icon">🖥️</span><span>화면 공유</span>
+        </button>
+        <button id="presMicBtn" class="pres-tb-btn mic" title="마이크">
+          <span class="pres-tb-icon">🎤</span><span>마이크</span>
+        </button>
+        <button id="presChatLockBtn" class="pres-tb-btn lock" title="채팅 잠금">
+          <span class="pres-tb-icon">💬</span><span>채팅 잠금</span>
+        </button>
+        <button id="presMuteAllBtn" class="pres-tb-btn muteall" title="전체 음소거">
+          <span class="pres-tb-icon">🔇</span><span>전체 음소거</span>
+        </button>
+      </div>
+      <div class="pres-toolbar-right">
+        <button id="presSidePanelBtn" class="pres-tb-btn panel" title="패널 토글">
+          <span class="pres-tb-icon">⊞</span><span>패널</span>
+        </button>
+        <button id="presEndBtn" class="pres-tb-btn end" title="발표 종료" onclick="socketPresEnd(); if(typeof stopScreenShare==='function')stopScreenShare(); presState.active=false; presState.presenterId=null; presState.chatLocked=false; _wasInPresRoom=false; document.getElementById('presenterView').classList.add('hidden'); if(typeof _presTimerStop==='function')_presTimerStop();">
+          <span class="pres-tb-icon">⏹</span><span>발표 종료</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 본문: 화면 영역 + 사이드 패널 -->
+    <div class="pres-body">
+
+      <!-- 화면 공유 영역 -->
+      <div class="pres-stage" id="presStage">
+        <div class="pres-screen-area" id="presScreenArea">
+          <!-- 공유 중 -->
+          <video id="presScreenPreview" class="pres-main-video hidden" muted playsinline></video>
+          <!-- 대기 화면 -->
+          <div id="presStandbyMsg" class="pres-standby">
+            <div class="pres-standby-icon">🖥️</div>
+            <div class="pres-standby-title">화면 공유 대기 중</div>
+            <div class="pres-standby-sub">상단 "화면 공유" 버튼을 눌러 시작하세요</div>
+          </div>
+        </div>
+
+        <!-- 하단: 참여자 썸네일 바 (자신의 카메라 or 아바타) -->
+        <div class="pres-thumb-bar" id="presThumbBar">
+          <div class="pres-thumb self">
+            <div class="pres-thumb-avatar" id="presMyThumb"></div>
+            <span class="pres-thumb-name">나 (진행자)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 사이드 패널 -->
+      <div class="pres-side-panel" id="presSidePanel">
+        <!-- 탭 -->
+        <div class="pres-side-tabs">
+          <button class="pres-side-tab active" data-tab="participants">참여자</button>
+          <button class="pres-side-tab" data-tab="chat">채팅</button>
+        </div>
+
+        <!-- 참여자 탭 -->
+        <div class="pres-tab-content" id="presTabParticipants">
+          <div class="pres-part-header">
+            <span id="presPartCount" class="pres-part-count">0명 참여</span>
+          </div>
+          <div id="presAudienceList" class="pres-audience-list"></div>
+        </div>
+
+        <!-- 채팅 탭 -->
+        <div class="pres-tab-content hidden" id="presTabChat">
+          <div id="presChatMessages" class="pres-chat-messages"></div>
+          <div class="pres-chat-input-area">
+            <input id="presChatInput" type="text" placeholder="메시지 입력..." maxlength="300" aria-label="발표 채팅 메시지 입력" />
+            <button id="presChatSend" class="pres-chat-send-btn">전송</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       시청자 전체화면 (Viewer View)
+       좌: 공유화면  |  우: 접이식 채팅 패널
+  ══════════════════════════════════════════════════ -->
+  <div id="presViewerOverlay" class="pres-fullscreen hidden">
+
+    <!-- 상단 툴바 -->
+    <div class="pres-toolbar viewer-toolbar">
+      <div class="pres-toolbar-left">
+        <span class="pres-logo">🎬</span>
+        <span id="presViewerName" class="pres-title-text">진행자</span>
+        <span class="pres-title-sub">님의 프레젠테이션</span>
+        <span id="presTimerViewer" class="pres-timer">00:00</span>
+      </div>
+      <div class="pres-toolbar-center">
+        <div id="chatLockBadge" class="pres-chat-lock-badge hidden">🔒 채팅 잠금</div>
+      </div>
+      <div class="pres-toolbar-right">
+        <button id="viewerChatPanelBtn" class="pres-tb-btn panel">
+          <span class="pres-tb-icon">💬</span><span>채팅</span>
+        </button>
+        <button id="presExitViewBtn" class="pres-tb-btn end" onclick="document.getElementById('presViewerOverlay').classList.add('hidden'); _wasInPresRoom=false; if(typeof _presTimerStop==='function')_presTimerStop();">
+          <span class="pres-tb-icon">↩</span><span>나가기</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 본문 -->
+    <div class="pres-body">
+
+      <!-- 공유 화면 -->
+      <div class="pres-stage" id="viewerStage">
+        <div class="pres-screen-area">
+          <video id="presViewerVideo" class="pres-main-video" autoplay playsinline></video>
+          <div id="viewerStandbyMsg" class="pres-standby">
+            <div class="pres-standby-icon">⏳</div>
+            <div class="pres-standby-title">화면 공유 대기 중</div>
+            <div class="pres-standby-sub">진행자가 화면을 공유하면 여기에 표시됩니다</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 채팅 패널 (접이식) -->
+      <div class="pres-side-panel viewer-chat-panel hidden" id="viewerChatPanel">
+        <div class="pres-side-tabs">
+          <span class="pres-side-tab active">채팅</span>
+        </div>
+        <div class="pres-tab-content" id="viewerTabChat">
+          <div id="viewerChatMessages" class="pres-chat-messages"></div>
+          <div class="pres-chat-input-area">
+            <input id="viewerChatInput" type="text" placeholder="메시지 입력..." maxlength="300" aria-label="시청자 채팅 메시지 입력" />
+            <button id="viewerChatSend" class="pres-chat-send-btn">전송</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Modal -->
+  <div id="helpModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>도움말</h3>
+        <button id="closeHelp" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4>이동</h4>
+        <ul>
+          <li><kbd>W</kbd> / <kbd>↑</kbd> - 위로 이동</li>
+          <li><kbd>S</kbd> / <kbd>↓</kbd> - 아래로 이동</li>
+          <li><kbd>A</kbd> / <kbd>←</kbd> - 왼쪽으로 이동</li>
+          <li><kbd>D</kbd> / <kbd>→</kbd> - 오른쪽으로 이동</li>
+          <li>캔버스 클릭 - 해당 위치로 이동</li>
+        </ul>
+        <h4>음성 채팅</h4>
+        <ul>
+          <li>하단 마이크 버튼으로 마이크 켜기/끄기</li>
+          <li>근접 거리(150px) 내 사용자와 자동 연결</li>
+          <li>거리에 따라 볼륨 자동 조절</li>
+        </ul>
+        <h4>구역 안내</h4>
+        <ul>
+          <li>🖥️ 개인사무실 - 좌상단, 개인 업무 공간</li>
+          <li>📋 회의실 - 우상단, 그룹 미팅 공간</li>
+          <li>☕ 탕비실 - 좌하단, 휴식 공간</li>
+          <li>🚶 로비/복도 - 중앙, 이동 공간</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="socket-client.js"></script>
+  <script src="webrtc.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
