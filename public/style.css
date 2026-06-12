@@ -819,11 +819,12 @@ html, body {
   white-space: nowrap;
 }
 
-/* Responsive canvas scaling — canvas 크기를 CSS로 제한, 내부 해상도는 고정 */
-#gameCanvas {
-  max-width: 100%;
-  max-height: calc(100vh - 100px);
-  object-fit: contain;
+/* Responsive canvas scaling */
+@media (max-height: 780px) {
+  #gameCanvas {
+    transform-origin: top center;
+    transform: scale(0.85);
+  }
 }
 
 /* ============================================================

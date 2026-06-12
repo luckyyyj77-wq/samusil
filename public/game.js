@@ -1520,12 +1520,11 @@ function updatePlayerMovement() {
 // Camera Update
 // ============================================================
 function updateCamera() {
-  if (!myPlayer) return;
-  // canvas 내부 해상도(VIEW_W x VIEW_H)가 월드(CANVAS_W x CANVAS_H)보다 작을 때만 스크롤
+  if (!isMobile || !myPlayer) return;
   const maxX = Math.max(0, CANVAS_W - VIEW_W);
   const maxY = Math.max(0, CANVAS_H - VIEW_H);
-  camera.x = maxX > 0 ? Math.max(0, Math.min(maxX, Math.round(myPlayer.x - VIEW_W / 2))) : 0;
-  camera.y = maxY > 0 ? Math.max(0, Math.min(maxY, Math.round(myPlayer.y - VIEW_H / 2))) : 0;
+  camera.x = Math.max(0, Math.min(maxX, myPlayer.x - VIEW_W / 2));
+  camera.y = Math.max(0, Math.min(maxY, myPlayer.y - VIEW_H / 2));
 }
 
 // ============================================================
@@ -1538,18 +1537,10 @@ function gameLoop() {
     updatePlayerMovement();
     updateCamera();
 
-    // 뷰포트 크기 갱신 (창 크기 변화 반영)
-    const _r = canvas.getBoundingClientRect();
-    VIEW_W = Math.round(_r.width  || CANVAS_W);
-    VIEW_H = Math.round(_r.height || CANVAS_H);
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
-    if (VIEW_W < CANVAS_W || VIEW_H < CANVAS_H) {
-      ctx.scale(VIEW_W / CANVAS_W, VIEW_H / CANVAS_H);
-      ctx.translate(-camera.x, -camera.y);
-    }
+    if (isMobile) ctx.translate(-camera.x, -camera.y);
 
     drawMap();
     drawProximityLines();
@@ -1755,10 +1746,10 @@ canvas.addEventListener('click', (e) => {
   if (ownerMode.active) return;  // owner mode handles its own clicks
 
   const rect = canvas.getBoundingClientRect();
-  const scaleX = CANVAS_W / rect.width;
-  const scaleY = CANVAS_H / rect.height;
-  const clickX = Math.round((e.clientX - rect.left) * scaleX) + camera.x;
-  const clickY = Math.round((e.clientY - rect.top)  * scaleY) + camera.y;
+  const scaleX = isMobile ? 1 : CANVAS_W / rect.width;
+  const scaleY = isMobile ? 1 : CANVAS_H / rect.height;
+  const clickX = Math.round((e.clientX - rect.left) * scaleX) + (isMobile ? camera.x : 0);
+  const clickY = Math.round((e.clientY - rect.top)  * scaleY) + (isMobile ? camera.y : 0);
 
   if (!isColliding(clickX, clickY)) {
     targetX = clickX;
@@ -1847,25 +1838,31 @@ function enterGame(name, color) {
 
   // Setup socket callbacks
   socketCallbacks.onInit = (data) => {
-    // 렌더링 루프 먼저 시작
+    myPlayer = players.get(myId);
+    if (myPlayer) {
+      myPlayer.muted = true; // start muted
+    }
+
+    // Load chat history
+    if (data.chatHistory) {
+      data.chatHistory.forEach(msg => addChatMessage(msg));
+    }
+
+    updatePlayerListUI();
+    updateZoneUI();
+    addSystemMessage('사무실에 입장했습니다. 환영합니다!');
+
+    // Mobile canvas resize
+    if (isMobile) {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+      VIEW_W = canvas.width;
+      VIEW_H = canvas.height;
+    }
+
+    // Start game loop
     if (animFrame) cancelAnimationFrame(animFrame);
     gameLoop();
-
-    try {
-      myPlayer = players.get(myId);
-      if (myPlayer) myPlayer.muted = true;
-
-
-      if (data.chatHistory) {
-        data.chatHistory.forEach(msg => addChatMessage(msg));
-      }
-
-      updatePlayerListUI();
-      updateZoneUI();
-      addSystemMessage('사무실에 입장했습니다. 환영합니다!');
-    } catch (e) {
-      console.error('[onInit]', e);
-    }
   };
 
   socketCallbacks.onUserJoined = (player) => {
@@ -2362,10 +2359,10 @@ function ownerModeMouseDown(e) {
   if (!ownerMode.active) return;
 
   const rect   = canvas.getBoundingClientRect();
-  const scaleX = CANVAS_W / rect.width;
-  const scaleY = CANVAS_H / rect.height;
-  const mx = (e.clientX - rect.left) * scaleX + camera.x;
-  const my = (e.clientY - rect.top)  * scaleY + camera.y;
+  const scaleX = isMobile ? 1 : CANVAS_W / rect.width;
+  const scaleY = isMobile ? 1 : CANVAS_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX + (isMobile ? camera.x : 0);
+  const my = (e.clientY - rect.top)  * scaleY + (isMobile ? camera.y : 0);
 
   // Right-click: delete hovered furniture
   if (e.button === 2) {
@@ -2429,10 +2426,10 @@ function ownerModeMouseMove(e) {
   if (!ownerMode.active) return;
 
   const rect   = canvas.getBoundingClientRect();
-  const scaleX = CANVAS_W / rect.width;
-  const scaleY = CANVAS_H / rect.height;
-  const mx = (e.clientX - rect.left) * scaleX + camera.x;
-  const my = (e.clientY - rect.top)  * scaleY + camera.y;
+  const scaleX = isMobile ? 1 : CANVAS_W / rect.width;
+  const scaleY = isMobile ? 1 : CANVAS_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX + (isMobile ? camera.x : 0);
+  const my = (e.clientY - rect.top)  * scaleY + (isMobile ? camera.y : 0);
 
   // Update ghost position
   if (ownerMode.ghostItem) {
@@ -2882,8 +2879,8 @@ function setupAvatarCustomizer() {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const wx = (e.clientX - rect.left) * (CANVAS_W / rect.width)  + camera.x;
-    const wy = (e.clientY - rect.top)  * (CANVAS_H / rect.height) + camera.y;
+    const wx = (e.clientX - rect.left) * scaleX + camera.x;
+    const wy = (e.clientY - rect.top)  * scaleY + camera.y;
 
     const dx = wx - me.x, dy = wy - me.y;
     if (dx * dx + dy * dy <= (AVATAR_RADIUS + 16) * (AVATAR_RADIUS + 16)) {
