@@ -1838,31 +1838,31 @@ function enterGame(name, color) {
 
   // Setup socket callbacks
   socketCallbacks.onInit = (data) => {
-    myPlayer = players.get(myId);
-    if (myPlayer) {
-      myPlayer.muted = true; // start muted
-    }
-
-    // Load chat history
-    if (data.chatHistory) {
-      data.chatHistory.forEach(msg => addChatMessage(msg));
-    }
-
-    updatePlayerListUI();
-    updateZoneUI();
-    addSystemMessage('사무실에 입장했습니다. 환영합니다!');
-
-    // Mobile canvas resize
-    if (isMobile) {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
-      VIEW_W = canvas.width;
-      VIEW_H = canvas.height;
-    }
-
-    // Start game loop
+    // 렌더링 루프 먼저 시작
     if (animFrame) cancelAnimationFrame(animFrame);
     gameLoop();
+
+    try {
+      myPlayer = players.get(myId);
+      if (myPlayer) myPlayer.muted = true;
+
+      if (isMobile) {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+        VIEW_W = canvas.width;
+        VIEW_H = canvas.height;
+      }
+
+      if (data.chatHistory) {
+        data.chatHistory.forEach(msg => addChatMessage(msg));
+      }
+
+      updatePlayerListUI();
+      updateZoneUI();
+      addSystemMessage('사무실에 입장했습니다. 환영합니다!');
+    } catch (e) {
+      console.error('[onInit]', e);
+    }
   };
 
   socketCallbacks.onUserJoined = (player) => {
