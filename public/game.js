@@ -1822,6 +1822,10 @@ function setupLoginScreen() {
       return;
     }
     errorEl.textContent = '';
+    
+    // WebRTC 오디오 잠금 해제 (User Gesture)
+    if (typeof unlockAudio === 'function') unlockAudio();
+
     enterGame(name, selectedColor);
   }
 
