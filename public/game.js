@@ -1945,9 +1945,13 @@ function enterGame(name, color) {
   });
 
   socket.on('screen-share-started', () => {
-    // 시청각실 안에 있는 사람만 화면공유 요청
+    console.log('[Socket] Screen share started by presenter');
+    // 시청각실 안에 있는 사람만 즉시 화면공유 요청
     if (_isMyPlayerInPresRoom() && presState.presenterId !== myId) {
-      if (typeof socketRequestScreen === 'function') socketRequestScreen();
+      if (typeof socketRequestScreen === 'function') {
+        console.log('[Socket] Requesting screen share...');
+        socketRequestScreen();
+      }
     }
   });
 
@@ -1957,8 +1961,12 @@ function enterGame(name, color) {
 
   // 진행자: 참여자가 화면공유 요청
   socket.on('viewer-wants-screen', (data) => {
+    console.log('[Socket] Viewer wants screen:', data.viewerId);
     if (typeof screenStream !== 'undefined' && screenStream) {
-      if (typeof _createScreenPeer === 'function') _createScreenPeer(data.viewerId, true);
+      if (typeof _createScreenPeer === 'function') {
+        console.log('[Socket] Creating screen peer for', data.viewerId);
+        _createScreenPeer(data.viewerId, true);
+      }
     }
   });
 
@@ -3057,8 +3065,8 @@ function setupPresentation() {
   // ── 시청자 뷰: 나가기 ───────────────────────────────────
   document.getElementById('presExitViewBtn')?.addEventListener('click', () => {
     document.getElementById('presViewerOverlay')?.classList.add('hidden');
-    _wasInPresRoom = false;
-    if (typeof _presTimerStop === 'function') _presTimerStop();
+    // _wasInPresRoom = false; // 위치가 여전히 방 안이면 루프에서 다시 켜짐 -> 수동 닫기 시에는 위치가 바뀌기 전까지 대기
+    addSystemMessage('🎬 시청을 종료했습니다. 다시 보려면 시청각실을 나갔다 들어오세요.');
   });
 
   // ── 시청자 뷰: 채팅 전송 ─────────────────────────────────

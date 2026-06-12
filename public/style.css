@@ -1712,8 +1712,13 @@ html, body {
 /* ── 타이머 ──────────────────────────────────────────────── */
 .viewer-toolbar { background: #0f1520; }
 
-/* ── 모바일: 프레젠테이션 완전 비활성 ────────────────────── */
+/* ── 모바일: 프레젠테이션 지원 (제한 제거) ────────────────── */
 @media (max-width: 768px) {
-  .pres-spot-hint  { display: none !important; }
-  .pres-fullscreen { display: none !important; }
+  .pres-spot-hint  { bottom: 100px; padding: 10px 16px; font-size: 13px; }
+  .pres-fullscreen { z-index: 2000; } /* 모바일에서는 최상단으로 */
+  .pres-side-panel { width: 100%; position: absolute; inset: 0; z-index: 10; background: #0b0f1a; }
+  .pres-side-panel.collapsed { display: none; }
+  .pres-toolbar-left, .pres-toolbar-right { min-width: auto; }
+  .pres-title-text { font-size: 13px; }
+  .pres-tb-btn { padding: 4px 8px; }
 }
