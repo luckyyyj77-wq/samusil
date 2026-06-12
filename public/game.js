@@ -67,6 +67,9 @@ const presState = {
   chatLocked: false,
 };
 
+// 레이아웃 버전 (가구 배치 등 대규모 변경 시 올림)
+const LAYOUT_VERSION = '1.1';
+
 // ============================================================
 // Office Map Definition
 // ============================================================
@@ -2498,6 +2501,7 @@ function ownerModeMouseUp(e) {
 // ---- Save / Load layout to localStorage ----
 function saveLayout() {
   const data = {
+    version: LAYOUT_VERSION,
     furniture: furniture.map(f => ({ ...f })),
     zones: {
       officeW: ZONES.OFFICE.w,
@@ -2514,6 +2518,12 @@ function loadLayout() {
   if (!raw) return;
   try {
     const data = JSON.parse(raw);
+    // 버전 체크: 버전이 다르거나 없으면 구버전 데이터로 간주하고 로드 안함 (새 기본값 사용)
+    if (data.version !== LAYOUT_VERSION) {
+      console.log(`[Layout] Version mismatch (local: ${data.version}, current: ${LAYOUT_VERSION}). Skipping load.`);
+      localStorage.removeItem('officeLayout'); // 구버전 삭제
+      return;
+    }
     furniture.splice(0, furniture.length, ...data.furniture);
     if (data.zones) applyZoneResize(data.zones.officeW, data.zones.splitH);
   } catch (err) {
