@@ -401,12 +401,134 @@ function calcVolume(dist) {
 }
 
 // ============================================================
-// Screen Share & Global Init
+// Screen Share (Presentation)
 // ============================================================
-let receivedScreenVideo = null; 
-const screenPeers = new Map();
+let screenStream = null;
+const screenPeers = new Map(); // targetId -> pc
 const _screenPendingCandidates = new Map();
 
+async function startScreenShare() {
+  if (screenStream) return;
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    screenStream = stream;
+
+    const preview = document.getElementById('presScreenPreview');
+    const standby = document.getElementById('presStandbyMsg');
+    if (preview) {
+      preview.srcObject = stream;
+      preview.play();
+      preview.classList.remove('hidden');
+    }
+    if (standby) standby.classList.add('hidden');
+
+    stream.getVideoTracks()[0].onended = () => stopScreenShare();
+
+    // 현재 방에 있는 사람들에게 화면공유 알림 (시그널링 유도)
+    // 실제로는 game.js의 루프나 소켓을 통해viewer-wants-screen이 오면 피어를 맺음
+  } catch (err) {
+    console.error('[WebRTC] startScreenShare failed:', err);
+    showMicError('화면 공유를 시작할 수 없습니다.');
+  }
+}
+
+function stopScreenShare() {
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+  }
+  const preview = document.getElementById('presScreenPreview');
+  const standby = document.getElementById('presStandbyMsg');
+  if (preview) {
+    preview.srcObject = null;
+    preview.classList.add('hidden');
+  }
+  if (standby) standby.classList.remove('hidden');
+
+  screenPeers.forEach(pc => pc.close());
+  screenPeers.clear();
+  _screenPendingCandidates.clear();
+}
+
+async function _createScreenPeer(targetId, isInitiator) {
+  if (screenPeers.has(targetId)) return screenPeers.get(targetId);
+
+  const pc = new RTCPeerConnection(ICE_SERVERS);
+  screenPeers.set(targetId, pc);
+
+  if (screenStream) {
+    screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+  }
+
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate) socketScreenSignal(targetId, { type: 'ice-candidate', candidate });
+  };
+
+  if (isInitiator) {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socketScreenSignal(targetId, { type: 'offer', sdp: pc.localDescription });
+  }
+
+  return pc;
+}
+
+async function handleScreenSignal(fromId, signal) {
+  if (signal.type === 'offer') {
+    // 시청자 입장: offer 수신
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    screenPeers.set(fromId, pc);
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socketScreenSignal(fromId, { type: 'ice-candidate', candidate });
+    };
+
+    pc.ontrack = ({ streams }) => {
+      const stream = streams[0];
+      const video  = document.getElementById('presViewerVideo');
+      const standby = document.getElementById('viewerStandbyMsg');
+      if (video) {
+        video.srcObject = stream;
+        video.play().catch(() => {
+          const resume = () => { video.play(); document.removeEventListener('click', resume); };
+          document.addEventListener('click', resume);
+        });
+        video.classList.remove('hidden');
+      }
+      if (standby) standby.classList.add('hidden');
+    };
+
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    const pending = _screenPendingCandidates.get(fromId) || [];
+    for (const c of pending) await pc.addIceCandidate(new RTCIceCandidate(c));
+    _screenPendingCandidates.delete(fromId);
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socketScreenSignal(fromId, { type: 'answer', sdp: pc.localDescription });
+
+  } else if (signal.type === 'answer') {
+    const pc = screenPeers.get(fromId);
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+      const pending = _screenPendingCandidates.get(fromId) || [];
+      for (const c of pending) await pc.addIceCandidate(new RTCIceCandidate(c));
+      _screenPendingCandidates.delete(fromId);
+    }
+  } else if (signal.type === 'ice-candidate') {
+    const pc = screenPeers.get(fromId);
+    if (pc && pc.remoteDescription) {
+      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    } else {
+      if (!_screenPendingCandidates.has(fromId)) _screenPendingCandidates.set(fromId, []);
+      _screenPendingCandidates.get(fromId).push(signal.candidate);
+    }
+  }
+}
+
+// ============================================================
+// Cleanup & Update Loops
+// ============================================================
 setInterval(() => {
   checkProximity();
   updateLocalSpeakLevel();
@@ -415,6 +537,7 @@ setInterval(() => {
 
 function cleanupWebRTC() {
   stopMic();
+  stopScreenShare();
   peerConnections.forEach((_, id) => removePeerConnection(id));
 }
 window.addEventListener('beforeunload', cleanupWebRTC);

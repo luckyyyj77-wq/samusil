@@ -315,7 +315,7 @@
         <button id="presSidePanelBtn" class="pres-tb-btn panel" title="패널 토글">
           <span class="pres-tb-icon">⊞</span><span>패널</span>
         </button>
-        <button id="presEndBtn" class="pres-tb-btn end" title="발표 종료" onclick="socketPresEnd(); if(typeof stopScreenShare==='function')stopScreenShare(); presState.active=false; presState.presenterId=null; presState.chatLocked=false; _wasInPresRoom=false; document.getElementById('presenterView').classList.add('hidden'); if(typeof _presTimerStop==='function')_presTimerStop();">
+        <button id="presEndBtn" class="pres-tb-btn end" title="발표 종료">
           <span class="pres-tb-icon">⏹</span><span>발표 종료</span>
         </button>
       </div>
@@ -392,13 +392,13 @@
         <div id="chatLockBadge" class="pres-chat-lock-badge hidden">🔒 채팅 잠금</div>
       </div>
       <div class="pres-toolbar-right">
-        <button id="viewerChatPanelBtn" class="pres-tb-btn panel">
+        <button id="viewerChatPanelBtn" class="pres-tb-btn chat active" title="채팅 토글">
           <span class="pres-tb-icon">💬</span><span>채팅</span>
         </button>
-        <button id="presExitViewBtn" class="pres-tb-btn end" onclick="document.getElementById('presViewerOverlay').classList.add('hidden'); _wasInPresRoom=false; if(typeof _presTimerStop==='function')_presTimerStop();">
-          <span class="pres-tb-icon">↩</span><span>나가기</span>
+        <button id="presExitViewBtn" class="pres-tb-btn end">
+          <span class="pres-tb-icon">✕</span><span>나가기</span>
         </button>
-      </div>
+        </div>
     </div>
 
     <!-- 본문 -->

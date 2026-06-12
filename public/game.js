@@ -2950,7 +2950,19 @@ function setupPresentation() {
     socketPresStart();
   });
 
-  // presEndBtn — onclick 속성으로 처리
+  // ── 진행자 뷰: 발표 종료 ───────────────────────────────────
+  document.getElementById('presEndBtn')?.addEventListener('click', () => {
+    if (typeof socketPresEnd === 'function') socketPresEnd();
+    if (typeof stopScreenShare === 'function') stopScreenShare();
+    
+    presState.active = false;
+    presState.presenterId = null;
+    presState.chatLocked = false;
+    _wasInPresRoom = false;
+
+    document.getElementById('presenterView')?.classList.add('hidden');
+    if (typeof _presTimerStop === 'function') _presTimerStop();
+  });
 
   // ── 진행자 뷰: 화면 공유 토글 ────────────────────────────
   document.getElementById('presShareScreenBtn')?.addEventListener('click', () => {
@@ -3024,7 +3036,12 @@ function setupPresentation() {
     document.getElementById('viewerChatPanelBtn')?.classList.toggle('active', !hidden);
   });
 
-  // presExitViewBtn — onclick 속성으로 처리
+  // ── 시청자 뷰: 나가기 ───────────────────────────────────
+  document.getElementById('presExitViewBtn')?.addEventListener('click', () => {
+    document.getElementById('presViewerOverlay')?.classList.add('hidden');
+    _wasInPresRoom = false;
+    if (typeof _presTimerStop === 'function') _presTimerStop();
+  });
 
   // ── 시청자 뷰: 채팅 전송 ─────────────────────────────────
   function sendViewerChat() {
