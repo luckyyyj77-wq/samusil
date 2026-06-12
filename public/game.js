@@ -88,8 +88,9 @@ const walls = [
   { x: 300, y: 372, w: 180, h: 16 },   // door gap at x=240~300
   { x: 530, y: 372, w: 670, h: 16 },   // door gap at x=480~530 (meeting room exit)
 
-  // Break room right wall
-  { x: 292, y: 388, w: 16, h: 412 },
+  // Break room right wall (with door gap for lobby access)
+  { x: 292, y: 388, w: 16, h: 120 },
+  { x: 292, y: 580, w: 16, h: 220 },  // door gap at y=508~580
 
   // 시청각실 칸막이 (회의실 내 좌측 구분선, 문 gap 포함)
   { x: 828, y: 8,   w: 12, h: 130 },
@@ -119,7 +120,7 @@ const furniture = [
 
   // Bookshelf
   { x: 360, y: 130, w: 90, h: 20, type: 'shelf' },
-  { x: 360, y: 180, w: 90, h: 20, type: 'shelf' },
+  { x: 250, y: 230, w: 90, h: 20, type: 'shelf' }, // Moved from y:180 to clear the door
   { x: 360, y: 230, w: 90, h: 20, type: 'shelf' },
 
   // ---- Meeting Room Zone ----
@@ -170,7 +171,7 @@ const furniture = [
   { x: 1150, y: 730, w: 30, h: 30, type: 'plant' },
 
   // Lobby reception desk
-  { x: 500, y: 430, w: 160, h: 50, type: 'reception' },
+  { x: 580, y: 430, w: 160, h: 50, type: 'reception' }, // Moved from x:500 to x:580 to clear the meeting room door (x:480~530)
 
   // Lobby sofas
   { x: 700, y: 600, w: 120, h: 50, type: 'sofa' },
@@ -1877,7 +1878,7 @@ function enterGame(name, color) {
   socketCallbacks.onUserLeft = (data) => {
     if (typeof removePeerConnection === 'function') removePeerConnection(data.id);
     updatePlayerListUI();
-    addSystemMessage(`${data.name ? data.name + ' 님이' : '사용자가'} 퇴장했습니다.`);
+    addSystemMessage(`${data.name || '사용자'} 님이 퇴장했습니다.`);
   };
 
   socketCallbacks.onChatMessage = (data) => {
@@ -1886,10 +1887,6 @@ function enterGame(name, color) {
 
   socketCallbacks.onUserMuted = () => {
     updatePlayerListUI();
-  };
-
-  socketCallbacks.onDisconnect = () => {
-    addSystemMessage('서버와의 연결이 끊어졌습니다. 재연결 중...');
   };
 
   // ── 프레젠테이션 이벤트 ──
@@ -1949,13 +1946,30 @@ function enterGame(name, color) {
     }
   });
 
+  socketCallbacks.onDisconnect = () => {
+    addSystemMessage('서버와의 연결이 끊어졌습니다. 재연결 중...');
+  };
+
+  socketCallbacks.onConnect = () => {
+    if (myPlayer) {
+      addSystemMessage('서버에 재연결되었습니다. 다시 입장합니다...');
+      socketJoin(name, color, myAvatarConfig);
+    }
+  };
+
   // Emit join — 이미 연결됐으면 즉시, 아니면 connect 후
   if (socket && socket.connected) {
     socketJoin(name, color, myAvatarConfig);
   } else {
+    // onConnect 콜백이 이미 설정되어 있을 수 있으므로 (위의 재접속 로직), 
+    // 여기서는 초기 입장 시에만 실행되도록 래핑하거나 기존 기능을 보존합니다.
+    const originalOnConnect = socketCallbacks.onConnect;
     socketCallbacks.onConnect = () => {
-      socketJoin(name, color, myAvatarConfig);
-      socketCallbacks.onConnect = null;
+      if (originalOnConnect) originalOnConnect();
+      // 초기 입장은 myPlayer가 없을 때 실행됨
+      if (!myPlayer) {
+        socketJoin(name, color, myAvatarConfig);
+      }
     };
   }
 }
