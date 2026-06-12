@@ -68,7 +68,7 @@ const presState = {
 };
 
 // 레이아웃 버전 (가구 배치 등 대규모 변경 시 올림)
-const LAYOUT_VERSION = '1.1';
+const LAYOUT_VERSION = '1.2';
 
 // ============================================================
 // Office Map Definition
