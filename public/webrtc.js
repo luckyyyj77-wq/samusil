@@ -198,6 +198,7 @@ function stopMic() {
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
   }
+  isMicActive = false; // 상태 업데이트
   peerConnections.forEach(peer => {
     peer.pc.getSenders().forEach(s => { if (s.track) s.track.enabled = false; });
   });
@@ -212,7 +213,9 @@ function addLocalTracksToPeer(targetId) {
   if (!peer) return;
   const existing = new Set(peer.pc.getSenders().map(s => s.track && s.track.id));
   localStream.getTracks().forEach(track => {
-    if (!existing.has(track.id)) peer.pc.addTrack(track, localStream);
+    if (!existing.has(track.id)) {
+      peer.pc.addTrack(track, localStream);
+    }
   });
 }
 
@@ -225,6 +228,23 @@ async function createPeerConnection(targetId, isInitiator) {
   const peer = { pc, gainNode: null, audioEl: null, analyser: null, speaking: false, speakLevel: 0 };
   peerConnections.set(targetId, peer);
   pendingCandidates.set(targetId, []);
+
+  // Negotiation Needed: 트랙이 추가되거나 ICE 갱신이 필요할 때 호출됨
+  pc.onnegotiationneeded = async () => {
+    try {
+      // 주도자이거나, 비주도자라도 이미 연결이 안정된 상태에서 트랙이 추가된 경우 Offer 생성
+      // (완벽한 협상 패턴의 단순화 버전)
+      if (isInitiator || pc.signalingState === 'stable') {
+        console.log(`[WebRTC] negotiationneeded → ${targetId}, state=${pc.signalingState}`);
+        const offer = await pc.createOffer({ offerToReceiveAudio: true });
+        if (pc.signalingState !== 'stable' && !isInitiator) return; 
+        await pc.setLocalDescription(offer);
+        socketWebRTCSignal(targetId, { type: 'offer', sdp: pc.localDescription });
+      }
+    } catch (e) {
+      console.error('[WebRTC] negotiation error:', e);
+    }
+  };
 
   if (localStream) addLocalTracksToPeer(targetId);
 
@@ -279,16 +299,6 @@ async function createPeerConnection(targetId, isInitiator) {
       console.warn('[WebRTC] analyser setup failed:', e);
     }
   };
-
-  if (isInitiator) {
-    try {
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
-      await pc.setLocalDescription(offer);
-      socketWebRTCSignal(targetId, { type: 'offer', sdp: pc.localDescription });
-    } catch (e) {
-      console.error('[WebRTC] createOffer failed:', e);
-    }
-  }
 
   return peer;
 }
