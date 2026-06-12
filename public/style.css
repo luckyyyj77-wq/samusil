@@ -453,6 +453,10 @@ html, body {
   flex-shrink: 0;
   image-rendering: pixelated;
   box-shadow: 0 0 40px rgba(0,0,0,0.8);
+  width: 1200px;
+  height: 800px;
+  max-width: 100%;
+  max-height: calc(100vh - 100px);
 }
 
 .canvas-footer {
