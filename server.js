@@ -183,10 +183,19 @@ io.on('connection', (socket) => {
   // 진행자가 프레젠테이션 시작
   socket.on('presentation-start', () => {
     console.log(`[Presentation] start request from ${socket.id}, active=${presentation.active}, presenter=${presentation.presenterId}`);
-    if (presentation.active) {
-      // 같은 사람이 다시 요청하면 허용 (재진입)
-      if (presentation.presenterId !== socket.id) return;
+    
+    // 이미 누군가 발표 중이면 차단 (본인인 경우는 재진입 허용)
+    if (presentation.active && presentation.presenterId !== socket.id) {
+      socket.emit('chat-message', {
+        id: 'system',
+        name: '시스템',
+        color: '#ff4444',
+        message: '이미 다른 사용자가 발표 중입니다.',
+        timestamp: Date.now()
+      });
+      return;
     }
+
     const player = players.get(socket.id);
     if (!player) { console.log('[Presentation] player not found'); return; }
 
@@ -230,6 +239,12 @@ io.on('connection', (socket) => {
     if (presentation.presenterId !== socket.id) return;
     presentation.chatLocked = !!data.locked;
     io.emit('chat-locked', { locked: presentation.chatLocked });
+  });
+
+  // 진행자가 화면 공유 시작 알림
+  socket.on('presenter-screen-start', () => {
+    if (presentation.presenterId !== socket.id) return;
+    socket.broadcast.emit('screen-share-started');
   });
 
   // 화면공유 WebRTC 시그널 (진행자↔참여자 릴레이)

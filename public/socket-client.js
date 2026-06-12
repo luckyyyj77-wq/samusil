@@ -171,6 +171,7 @@ function socketPresStart()                    { if (!socket) return; socket.emit
 function socketPresEnd()                      { if (!socket) return; socket.emit('presentation-end'); }
 function socketPresMuteUser(targetId, muted)  { if (!socket) return; socket.emit('presenter-mute-user', { targetId, muted }); }
 function socketPresChatLock(locked)           { if (!socket) return; socket.emit('presenter-chat-lock', { locked }); }
+function socketPresScreenStart()             { if (!socket) return; socket.emit('presenter-screen-start'); }
 function socketScreenSignal(toId, signal)     { if (!socket) return; socket.emit('screen-signal', { to: toId, signal }); }
 function socketRequestScreen()               { if (!socket) return; socket.emit('request-screen'); }
 

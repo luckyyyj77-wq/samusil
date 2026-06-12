@@ -1460,6 +1460,14 @@ let lastEmitY = null;
 function updatePlayerMovement() {
   if (!myPlayer) return;
 
+  // ── 발표 중 이동 고정 ───────────────────────────────────
+  if (presState.active && presState.presenterId === myId) {
+    isMovingToTarget = false;
+    targetX = null;
+    targetY = null;
+    return;
+  }
+
   let moved = false;
   let dx = 0;
   let dy = 0;
@@ -1895,22 +1903,17 @@ function enterGame(name, color) {
     updatePlayerListUI();
   };
 
-  // ── 프레젠테이션 이벤트 ──
   socket.on('presentation-started', (data) => {
     presState.active = true;
     presState.presenterId = data.presenterId;
     presState.presenterName = data.presenterName;
-    _wasInPresRoom = false; // 방 상태 리셋해서 checkPresenterSpot이 재평가
     addSystemMessage(`🎬 ${data.presenterName}님이 프레젠테이션을 시작했습니다.`);
+    
+    _wasInPresRoom = false; // 상태 초기화하여 checkPresenterSpot이 재평가하게 함
+
     if (data.presenterId === myId) {
       updatePresenterPanel(true);
-    } else if (_isMyPlayerInPresRoom()) {
-      // 이미 방 안에 있으면 즉시 시청자 뷰 열고 화면공유 요청
-      _wasInPresRoom = true;
-      showPresViewerOverlay(true);
-      socketRequestScreen();
     }
-    // 방 밖이면 checkPresenterSpot 루프에서 입장 시 자동 처리
   });
 
   socket.on('presentation-ended', () => {
@@ -1919,7 +1922,7 @@ function enterGame(name, color) {
     presState.presenterId = null;
     presState.presenterName = '';
     presState.chatLocked = false;
-    _wasInPresRoom = false;
+    _wasInPresRoom = false; // 상태 초기화
     addSystemMessage('🎬 프레젠테이션이 종료되었습니다.');
     showPresViewerOverlay(false);
     if (wasPresenter) updatePresenterPanel(false);
@@ -1939,6 +1942,13 @@ function enterGame(name, color) {
   socket.on('chat-locked', (data) => {
     presState.chatLocked = data.locked;
     updateChatLockUI(data.locked);
+  });
+
+  socket.on('screen-share-started', () => {
+    // 시청각실 안에 있는 사람만 화면공유 요청
+    if (_isMyPlayerInPresRoom() && presState.presenterId !== myId) {
+      if (typeof socketRequestScreen === 'function') socketRequestScreen();
+    }
   });
 
   socket.on('screen-signal', (data) => {
@@ -2922,33 +2932,41 @@ function setupAvatarCustomizer() {
 function setupPresentation() {
   // 모바일은 CSS로 UI 숨김 처리, JS 이벤트는 등록해둠
 
-  // ── 하단 바 🎬 발표 버튼 (스팟 무관, 항상 접근 가능) ────
-  document.getElementById('presQuickBtn')?.addEventListener('click', () => {
+  function tryStartPresentation() {
     if (presState.active) {
       if (presState.presenterId === myId) {
         updatePresenterPanel(true);
       } else {
-        showPresViewerOverlay(true);
+        // 이미 다른 사람이 발표 중인 경우
+        if (_isMyPlayerInPresRoom()) {
+          showPresViewerOverlay(true);
+          if (typeof socketRequestScreen === 'function') socketRequestScreen();
+        } else {
+          showMicError('이미 다른 사용자가 발표 중입니다.');
+        }
       }
-    } else {
-      // 즉시 진행자 뷰 열고 서버에 알림
-      presState.active = true;
-      presState.presenterId = myId;
-      presState.presenterName = myPlayer?.name || '';
-      updatePresenterPanel(true);
-      socketPresStart();
+      return;
     }
-  });
 
-  // ── 스팟 힌트: 시작 버튼 ─────────────────────────────────
-  document.getElementById('presStartBtn')?.addEventListener('click', () => {
+    // 스팟 체크
+    if (!_wasOnSpot) {
+      showMicError('발표는 시청각실 앞 진행자 스팟에서만 시작할 수 있습니다.');
+      return;
+    }
+
+    // 즉시 진행자 뷰 열고 서버에 알림
     presState.active = true;
     presState.presenterId = myId;
     presState.presenterName = myPlayer?.name || '';
-    document.getElementById('presSpotHint')?.classList.add('hidden');
     updatePresenterPanel(true);
     socketPresStart();
-  });
+  }
+
+  // ── 하단 바 🎬 발표 버튼 ─────────────────────────────────
+  document.getElementById('presQuickBtn')?.addEventListener('click', tryStartPresentation);
+
+  // ── 스팟 힌트: 시작 버튼 ─────────────────────────────────
+  document.getElementById('presStartBtn')?.addEventListener('click', tryStartPresentation);
 
   // ── 진행자 뷰: 발표 종료 ───────────────────────────────────
   document.getElementById('presEndBtn')?.addEventListener('click', () => {

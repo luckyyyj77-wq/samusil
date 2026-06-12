@@ -424,8 +424,8 @@ async function startScreenShare() {
 
     stream.getVideoTracks()[0].onended = () => stopScreenShare();
 
-    // 현재 방에 있는 사람들에게 화면공유 알림 (시그널링 유도)
-    // 실제로는 game.js의 루프나 소켓을 통해viewer-wants-screen이 오면 피어를 맺음
+    // 서버에 화면 공유 시작 알림
+    if (typeof socketPresScreenStart === 'function') socketPresScreenStart();
   } catch (err) {
     console.error('[WebRTC] startScreenShare failed:', err);
     showMicError('화면 공유를 시작할 수 없습니다.');
