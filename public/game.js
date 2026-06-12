@@ -127,8 +127,7 @@ const furniture = [
   { x: 360, y: 230, w: 90, h: 20, type: 'shelf' },
 
   // ---- Meeting Room Zone ----
-  // Big conference table (280x120) centered
-  { x: 570, y: 110, w: 280, h: 120, type: 'conference-table' },
+  // (탁자 제거됨)
 
   // Whiteboard
   { x: 490, y: 30, w: 120, h: 70, type: 'whiteboard' },
