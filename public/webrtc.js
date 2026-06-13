@@ -230,9 +230,11 @@ async function createPeerConnection(targetId, isInitiator) {
   const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
+    console.log(`[WebRTC] negotiationneeded targetId=${targetId} polite=${polite} state=${pc.signalingState}`);
     try {
       makingOffer.set(targetId, true);
       await pc.setLocalDescription();
+      console.log(`[WebRTC] offer sent to ${targetId}`);
       socketWebRTCSignal(targetId, { type: 'offer', sdp: pc.localDescription });
     } catch (err) {
       console.error(`[WebRTC] negotiationneeded error with ${targetId}:`, err);
@@ -246,6 +248,7 @@ async function createPeerConnection(targetId, isInitiator) {
   };
 
   pc.oniceconnectionstatechange = () => {
+    console.log(`[WebRTC] iceState=${pc.iceConnectionState} targetId=${targetId}`);
     if (pc.iceConnectionState === 'failed') pc.restartIce();
     if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
       removePeerConnection(targetId);
@@ -304,11 +307,15 @@ function removePeerConnection(targetId) {
 }
 
 async function handleWebRTCSignal(fromId, signal) {
+  console.log(`[WebRTC] signal rx type=${signal.type} from=${fromId} hasPeer=${peerConnections.has(fromId)}`);
   let peer = peerConnections.get(fromId);
   if (!peer && signal.type === 'offer') {
     peer = await createPeerConnection(fromId, false);
   }
-  if (!peer) return;
+  if (!peer) {
+    console.warn(`[WebRTC] no peer for signal type=${signal.type} from=${fromId}, dropping`);
+    return;
+  }
 
   const pc = peer.pc;
   const polite = peer.polite;
@@ -316,6 +323,7 @@ async function handleWebRTCSignal(fromId, signal) {
   try {
     if (signal.type === 'offer') {
       const offerCollision = makingOffer.get(fromId) || pc.signalingState !== 'stable';
+      console.log(`[WebRTC] offer from=${fromId} collision=${offerCollision} polite=${polite} state=${pc.signalingState}`);
       if (offerCollision && !polite) {
         console.log(`[WebRTC] Glare: Ignoring offer from ${fromId}`);
         return;
@@ -324,9 +332,11 @@ async function handleWebRTCSignal(fromId, signal) {
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
       await _flushPendingCandidates(fromId, pc);
       await pc.setLocalDescription();
+      console.log(`[WebRTC] answer sent to ${fromId}`);
       socketWebRTCSignal(fromId, { type: 'answer', sdp: pc.localDescription });
 
     } else if (signal.type === 'answer') {
+      console.log(`[WebRTC] answer from=${fromId} state=${pc.signalingState}`);
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
       await _flushPendingCandidates(fromId, pc);
 
@@ -338,7 +348,7 @@ async function handleWebRTCSignal(fromId, signal) {
       }
     }
   } catch (err) {
-    console.error(`[WebRTC] signal error from ${fromId}:`, err);
+    console.error(`[WebRTC] signal error type=${signal.type} from=${fromId}:`, err);
   }
 }
 
