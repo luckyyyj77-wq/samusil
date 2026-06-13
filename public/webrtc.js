@@ -254,9 +254,16 @@ async function createPeerConnection(targetId, isInitiator) {
 
   pc.oniceconnectionstatechange = () => {
     console.log(`[WebRTC] iceState=${pc.iceConnectionState} targetId=${targetId}`);
-    if (pc.iceConnectionState === 'failed') pc.restartIce();
-    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+    if (pc.iceConnectionState === 'failed') {
+      pc.restartIce();
+    } else if (pc.iceConnectionState === 'closed') {
       removePeerConnection(targetId);
+    }
+    // disconnected는 일시적 상태(크롬에서 민감) — restartIce로 복구 시도
+    else if (pc.iceConnectionState === 'disconnected') {
+      setTimeout(() => {
+        if (pc.iceConnectionState === 'disconnected') pc.restartIce();
+      }, 3000);
     }
   };
 
