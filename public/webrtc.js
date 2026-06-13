@@ -446,7 +446,7 @@ const _screenPendingCandidates = new Map();
 async function startScreenShare() {
   if (screenStream) return;
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     screenStream = stream;
 
     const preview = document.getElementById('presScreenPreview');
@@ -458,7 +458,8 @@ async function startScreenShare() {
     }
     if (standby) standby.classList.add('hidden');
 
-    stream.getVideoTracks()[0].onended = () => stopScreenShare();
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) videoTrack.onended = () => stopScreenShare();
 
     // 서버에 화면 공유 시작 알림
     if (typeof socketPresScreenStart === 'function') socketPresScreenStart();
@@ -480,6 +481,9 @@ function stopScreenShare() {
     preview.classList.add('hidden');
   }
   if (standby) standby.classList.remove('hidden');
+
+  const screenAudio = document.getElementById('presViewerAudio');
+  if (screenAudio) { screenAudio.srcObject = null; screenAudio.remove(); }
 
   screenPeers.forEach(pc => pc.close());
   screenPeers.clear();
@@ -519,19 +523,37 @@ async function handleScreenSignal(fromId, signal) {
       if (candidate) socketScreenSignal(fromId, { type: 'ice-candidate', candidate });
     };
 
-    pc.ontrack = ({ streams }) => {
+    pc.ontrack = ({ track, streams }) => {
       const stream = streams[0];
-      const video  = document.getElementById('presViewerVideo');
       const standby = document.getElementById('viewerStandbyMsg');
-      if (video) {
-        video.srcObject = stream;
-        video.play().catch(() => {
-          const resume = () => { video.play(); document.removeEventListener('click', resume); };
+
+      if (track.kind === 'video') {
+        const video = document.getElementById('presViewerVideo');
+        if (video) {
+          video.srcObject = stream;
+          video.play().catch(() => {
+            const resume = () => { video.play(); document.removeEventListener('click', resume); };
+            document.addEventListener('click', resume);
+          });
+          video.classList.remove('hidden');
+        }
+        if (standby) standby.classList.add('hidden');
+      } else if (track.kind === 'audio') {
+        // 탭 오디오 공유 시 별도 audio 엘리먼트로 재생
+        let screenAudio = document.getElementById('presViewerAudio');
+        if (!screenAudio) {
+          screenAudio = document.createElement('audio');
+          screenAudio.id = 'presViewerAudio';
+          screenAudio.autoplay = true;
+          screenAudio.style.display = 'none';
+          document.body.appendChild(screenAudio);
+        }
+        screenAudio.srcObject = stream;
+        screenAudio.play().catch(() => {
+          const resume = () => { screenAudio.play(); document.removeEventListener('click', resume); };
           document.addEventListener('click', resume);
         });
-        video.classList.remove('hidden');
       }
-      if (standby) standby.classList.add('hidden');
     };
 
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
