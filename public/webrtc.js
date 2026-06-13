@@ -230,6 +230,11 @@ async function createPeerConnection(targetId, isInitiator) {
   const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
+    // track이 없는 상태에서 보내는 빈 offer는 이후 재협상을 방해하므로 skip
+    if (pc.getSenders().filter(s => s.track).length === 0) {
+      console.log(`[WebRTC] negotiationneeded skip (no tracks) targetId=${targetId}`);
+      return;
+    }
     console.log(`[WebRTC] negotiationneeded targetId=${targetId} polite=${polite} state=${pc.signalingState}`);
     try {
       makingOffer.set(targetId, true);
