@@ -3,7 +3,8 @@
 // ============================================================
 // Constants & State
 // ============================================================
-const PROXIMITY_DISTANCE  = 250; // 연결 범위 확대 (150 -> 250)
+const PROXIMITY_DISTANCE  = 250; // 연결 시작 거리
+const PROXIMITY_DISCONNECT = 300; // 연결 해제 거리 (히스테리시스: 연결보다 50px 더 멀어야 끊김)
 const MAX_VOLUME_DISTANCE = 60;
 const CHECK_INTERVAL_MS   = 500;
 
@@ -381,7 +382,9 @@ function checkProximity() {
   players.forEach((player, id) => {
     if (id === myId) return;
     const dist = Math.sqrt((player.x - me.x) ** 2 + (player.y - me.y) ** 2);
-    if (dist <= PROXIMITY_DISTANCE) nearbyIds.add(id);
+    // 이미 연결됐으면 DISCONNECT 거리까지, 아직 연결 안 됐으면 PROXIMITY_DISTANCE까지
+    const threshold = peerConnections.has(id) ? PROXIMITY_DISCONNECT : PROXIMITY_DISTANCE;
+    if (dist <= threshold) nearbyIds.add(id);
   });
 
   nearbyIds.forEach(id => {
