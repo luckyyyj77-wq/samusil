@@ -189,9 +189,8 @@ function stopMic() {
   setMicUI('muted');
   
   peerConnections.forEach(peer => {
-    peer.pc.getSenders().forEach(s => { 
-      if (s.track && s.track.kind === 'audio') s.track.enabled = false; 
-    });
+    const sender = peer.senders?.get('audio');
+    if (sender) sender.replaceTrack(null).catch(() => {});
   });
 }
 
@@ -203,13 +202,14 @@ function addLocalTracksToPeer(targetId) {
   const peer = peerConnections.get(targetId);
   if (!peer) return;
   
-  const existingSenders = peer.pc.getSenders();
   localStream.getTracks().forEach(track => {
-    const sender = existingSenders.find(s => s.track && s.track.kind === track.kind);
-    if (sender) {
-      sender.replaceTrack(track).catch(e => console.warn('[WebRTC] replaceTrack failed:', e));
+    const existing = peer.senders?.get(track.kind);
+    if (existing) {
+      existing.replaceTrack(track).catch(e => console.warn('[WebRTC] replaceTrack failed:', e));
     } else {
-      peer.pc.addTrack(track, localStream);
+      const sender = peer.pc.addTrack(track, localStream);
+      if (!peer.senders) peer.senders = new Map();
+      peer.senders.set(track.kind, sender);
     }
   });
 }
@@ -220,13 +220,13 @@ async function createPeerConnection(targetId, isInitiator) {
   console.log(`[WebRTC] create PC → ${targetId} initiator=${isInitiator}`);
   const pc = new RTCPeerConnection(ICE_SERVERS);
 
-  const peer = { pc, audioEl: null, analyser: null, speaking: false, speakLevel: 0 };
+  const peer = { pc, audioEl: null, analyser: null, speaking: false, speakLevel: 0, polite: !isInitiator };
   peerConnections.set(targetId, peer);
   pendingCandidates.set(targetId, []);
   makingOffer.set(targetId, false);
   ignoreOffer.set(targetId, false);
 
-  const polite = !isInitiator;
+  const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
     try {
@@ -310,7 +310,7 @@ async function handleWebRTCSignal(fromId, signal) {
   if (!peer) return;
 
   const pc = peer.pc;
-  const polite = !makingOffer.has(fromId); // Simplified polite peer check
+  const polite = peer.polite;
 
   try {
     if (signal.type === 'offer') {
@@ -321,22 +321,33 @@ async function handleWebRTCSignal(fromId, signal) {
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+      await _flushPendingCandidates(fromId, pc);
       await pc.setLocalDescription();
       socketWebRTCSignal(fromId, { type: 'answer', sdp: pc.localDescription });
 
     } else if (signal.type === 'answer') {
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+      await _flushPendingCandidates(fromId, pc);
 
     } else if (signal.type === 'ice-candidate') {
-      try {
+      if (pc.remoteDescription) {
         await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      } catch (err) {
-        // ignore errors during collision
+      } else {
+        pendingCandidates.get(fromId)?.push(signal.candidate);
       }
     }
   } catch (err) {
     console.error(`[WebRTC] signal error from ${fromId}:`, err);
   }
+}
+
+async function _flushPendingCandidates(id, pc) {
+  const pending = pendingCandidates.get(id);
+  if (!pending || pending.length === 0) return;
+  for (const c of pending) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+  }
+  pending.length = 0;
 }
 
 // ============================================================
