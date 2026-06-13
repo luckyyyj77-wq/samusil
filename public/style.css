@@ -1098,6 +1098,26 @@ html, body {
   flex-shrink: 0;
 }
 
+.mobile-drawer-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.mobile-drawer-close:active { background: var(--bg-input); }
+
+/* 모바일 채팅 input — 키보드 올라와도 가리지 않도록 */
+.mobile-chat-input-area {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-panel);
+}
+
 .mobile-overlay {
   position: fixed;
   top: 0;
@@ -1581,9 +1601,26 @@ html, body {
 
 .pres-side-tabs {
   display: flex;
+  align-items: center;
   border-bottom: 1px solid #1e2c45;
   flex-shrink: 0;
 }
+
+.viewer-chat-close-btn {
+  display: none;
+  margin-left: auto;
+  margin-right: 8px;
+  background: none;
+  border: none;
+  color: #78909c;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.viewer-chat-close-btn:active { background: rgba(255,255,255,0.08); }
 .pres-side-tab {
   flex: 1;
   padding: 12px;
@@ -1715,10 +1752,12 @@ html, body {
 /* ── 모바일: 프레젠테이션 지원 (제한 제거) ────────────────── */
 @media (max-width: 768px) {
   .pres-spot-hint  { bottom: 100px; padding: 10px 16px; font-size: 13px; }
-  .pres-fullscreen { z-index: 2000; } /* 모바일에서는 최상단으로 */
+  .pres-fullscreen { z-index: 2000; }
   .pres-side-panel { width: 100%; position: absolute; inset: 0; z-index: 10; background: #0b0f1a; }
   .pres-side-panel.collapsed { display: none; }
   .pres-toolbar-left, .pres-toolbar-right { min-width: auto; }
   .pres-title-text { font-size: 13px; }
   .pres-tb-btn { padding: 4px 8px; }
+  /* 모바일에서 채팅 패널 닫기 버튼 표시 */
+  .viewer-chat-close-btn { display: block; }
 }

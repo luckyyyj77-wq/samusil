@@ -3061,6 +3061,10 @@ function setupPresentation() {
     const hidden = viewerChatPanel.classList.toggle('hidden');
     document.getElementById('viewerChatPanelBtn')?.classList.toggle('active', !hidden);
   });
+  document.getElementById('viewerChatCloseBtn')?.addEventListener('click', () => {
+    viewerChatPanel?.classList.add('hidden');
+    document.getElementById('viewerChatPanelBtn')?.classList.remove('active');
+  });
 
   // ── 시청자 뷰: 나가기 ───────────────────────────────────
   document.getElementById('presExitViewBtn')?.addEventListener('click', () => {
