@@ -230,9 +230,15 @@ async function createPeerConnection(targetId, isInitiator) {
   const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
-    // track이 없는 상태에서 보내는 빈 offer는 이후 재협상을 방해하므로 skip
+    // track 없는 빈 offer는 재협상을 방해하므로 skip
     if (pc.getSenders().filter(s => s.track).length === 0) {
       console.log(`[WebRTC] negotiationneeded skip (no tracks) targetId=${targetId}`);
+      return;
+    }
+    // polite(non-initiator) 쪽은 상대방 offer를 기다려야 함
+    // 단, 이미 stable 상태에서 track이 추가된 재협상은 허용
+    if (polite && pc.signalingState === 'stable' && pc.remoteDescription === null) {
+      console.log(`[WebRTC] negotiationneeded skip (polite, waiting for offer) targetId=${targetId}`);
       return;
     }
     console.log(`[WebRTC] negotiationneeded targetId=${targetId} polite=${polite} state=${pc.signalingState}`);
