@@ -229,7 +229,7 @@ async function createPeerConnection(targetId, isInitiator) {
   console.log(`[WebRTC] create PC → ${targetId} initiator=${isInitiator}`);
   const pc = new RTCPeerConnection(ICE_SERVERS);
 
-  const peer = { pc, audioEl: null, analyser: null, speaking: false, speakLevel: 0, polite: !isInitiator };
+  const peer = { pc, audioEl: null, analyser: null, speaking: false, speakLevel: 0, polite: !isInitiator, pendingRenegotiation: false };
   peerConnections.set(targetId, peer);
   pendingCandidates.set(targetId, []);
   makingOffer.set(targetId, false);
@@ -238,12 +238,13 @@ async function createPeerConnection(targetId, isInitiator) {
   const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
-    // polite(non-initiator): 상대 offer를 기다림. 단 remoteDescription이 있으면 재협상이므로 허용
+    // polite: 상대 offer를 아직 못 받은 상태면 재협상을 보류해둠
+    // 상대 offer를 받아 answer를 보낼 때 track이 자동 포함되거나, 이후 재협상 기회가 생김
     if (polite && pc.remoteDescription === null) {
       console.log(`[WebRTC] negotiationneeded skip (polite, waiting for offer) targetId=${targetId}`);
+      peer.pendingRenegotiation = true;
       return;
     }
-    // impolite(initiator): track 없어도 offer 전송 — 연결 확립 후 상대가 track 추가하면 들을 수 있음
     // polite 재협상: track 없으면 skip
     if (polite && pc.getSenders().filter(s => s.track).length === 0) {
       console.log(`[WebRTC] negotiationneeded skip (polite, no tracks) targetId=${targetId}`);
@@ -381,6 +382,23 @@ async function handleWebRTCSignal(fromId, signal) {
       await pc.setLocalDescription();
       console.log(`[WebRTC] answer sent to ${fromId}`);
       socketWebRTCSignal(fromId, { type: 'answer', sdp: pc.localDescription });
+
+      // polite가 addTrack 후 offer를 기다리던 중이었으면, answer 후 재협상 offer 전송
+      if (peer.pendingRenegotiation && pc.getSenders().filter(s => s.track).length > 0) {
+        peer.pendingRenegotiation = false;
+        console.log(`[WebRTC] flushing pendingRenegotiation → ${fromId}`);
+        try {
+          makingOffer.set(fromId, true);
+          await pc.setLocalDescription();
+          socketWebRTCSignal(fromId, { type: 'offer', sdp: pc.localDescription });
+        } catch (e) {
+          console.error(`[WebRTC] pendingRenegotiation offer error:`, e);
+        } finally {
+          makingOffer.set(fromId, false);
+        }
+      } else {
+        peer.pendingRenegotiation = false;
+      }
 
     } else if (signal.type === 'answer') {
       console.log(`[WebRTC] answer from=${fromId} state=${pc.signalingState}`);
