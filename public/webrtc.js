@@ -176,7 +176,11 @@ async function toggleMic() {
   socketMuteToggle(false);
   if (myId && players.has(myId)) players.get(myId).muted = false;
 
-  peerConnections.forEach((_, id) => addLocalTracksToPeer(id));
+  console.log(`[WebRTC] mic started, peerConnections count=${peerConnections.size}`);
+  peerConnections.forEach((_, id) => {
+    console.log(`[WebRTC] addLocalTracksToPeer → ${id}`);
+    addLocalTracksToPeer(id);
+  });
 }
 
 function stopMic() {
@@ -202,15 +206,19 @@ function addLocalTracksToPeer(targetId) {
   if (!localStream) return;
   const peer = peerConnections.get(targetId);
   if (!peer) return;
-  
+
   localStream.getTracks().forEach(track => {
     const existing = peer.senders?.get(track.kind);
+    console.log(`[WebRTC] addLocalTracksToPeer ${targetId} kind=${track.kind} existing=${!!existing} signalingState=${peer.pc.signalingState}`);
     if (existing) {
-      existing.replaceTrack(track).catch(e => console.warn('[WebRTC] replaceTrack failed:', e));
+      existing.replaceTrack(track).then(() => {
+        console.log(`[WebRTC] replaceTrack ok ${targetId} kind=${track.kind}`);
+      }).catch(e => console.warn('[WebRTC] replaceTrack failed:', e));
     } else {
       const sender = peer.pc.addTrack(track, localStream);
       if (!peer.senders) peer.senders = new Map();
       peer.senders.set(track.kind, sender);
+      console.log(`[WebRTC] addTrack ok ${targetId} kind=${track.kind}`);
     }
   });
 }
@@ -230,15 +238,15 @@ async function createPeerConnection(targetId, isInitiator) {
   const polite = peer.polite;
 
   pc.onnegotiationneeded = async () => {
-    // track 없는 빈 offer는 재협상을 방해하므로 skip
-    if (pc.getSenders().filter(s => s.track).length === 0) {
-      console.log(`[WebRTC] negotiationneeded skip (no tracks) targetId=${targetId}`);
+    // polite(non-initiator): 상대 offer를 기다림. 단 remoteDescription이 있으면 재협상이므로 허용
+    if (polite && pc.remoteDescription === null) {
+      console.log(`[WebRTC] negotiationneeded skip (polite, waiting for offer) targetId=${targetId}`);
       return;
     }
-    // polite(non-initiator) 쪽은 상대방 offer를 기다려야 함
-    // 단, 이미 stable 상태에서 track이 추가된 재협상은 허용
-    if (polite && pc.signalingState === 'stable' && pc.remoteDescription === null) {
-      console.log(`[WebRTC] negotiationneeded skip (polite, waiting for offer) targetId=${targetId}`);
+    // impolite(initiator): track 없어도 offer 전송 — 연결 확립 후 상대가 track 추가하면 들을 수 있음
+    // polite 재협상: track 없으면 skip
+    if (polite && pc.getSenders().filter(s => s.track).length === 0) {
+      console.log(`[WebRTC] negotiationneeded skip (polite, no tracks) targetId=${targetId}`);
       return;
     }
     console.log(`[WebRTC] negotiationneeded targetId=${targetId} polite=${polite} state=${pc.signalingState}`);
@@ -288,11 +296,32 @@ async function createPeerConnection(targetId, isInitiator) {
       peer.audioEl = audio;
     }
     audio.srcObject = stream;
-    audio.play().catch(err => {
-      console.warn('[WebRTC] autoplay blocked, waiting for gesture');
-      const resume = () => { audio.play().catch(() => {}); document.removeEventListener('click', resume); };
-      document.addEventListener('click', resume, { once: true });
-    });
+
+    const tryPlay = () => {
+      // iOS는 muted autoplay 후 unmute가 표준 패턴
+      audio.muted = true;
+      audio.play().then(() => {
+        audio.muted = false;
+      }).catch(err => {
+        console.warn('[WebRTC] autoplay blocked, waiting for gesture', err);
+        audio.muted = false;
+        const resume = () => {
+          audio.play().catch(() => {});
+          document.removeEventListener('click', resume);
+          document.removeEventListener('touchstart', resume);
+        };
+        document.addEventListener('click', resume, { once: true });
+        document.addEventListener('touchstart', resume, { once: true });
+      });
+    };
+
+    // AudioContext가 suspended면 resume 후 재생
+    const ac = audioContext;
+    if (ac && ac.state === 'suspended') {
+      ac.resume().then(tryPlay).catch(tryPlay);
+    } else {
+      tryPlay();
+    }
 
     try {
       const ac  = ensureAudioContext();
