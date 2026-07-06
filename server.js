@@ -6,6 +6,14 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+// 예상치 못한 예외로 서버 전체가 죽는 것을 방지 (한 클라이언트의 잘못된 입력이 전체 접속자에게 영향 주지 않도록)
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+
 const app = express();
 
 // SSL 인증서가 있으면 HTTPS, 없으면 HTTP
@@ -67,19 +75,23 @@ io.on('connection', (socket) => {
 
   // Handle join event
   socket.on('join', (data) => {
+    if (!data || typeof data !== 'object') return;
     const { name, color, avatar } = data;
 
     const spawnX = 600 + Math.floor(Math.random() * 200 - 100);
     const spawnY = 600 + Math.floor(Math.random() * 100 - 50);
 
+    const safeName = (typeof name === 'string' ? name : '').trim().slice(0, 20) || 'Unknown';
+    const safeColor = (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) ? color : '#4fc3f7';
+
     const player = {
       id: socket.id,
-      name: name || 'Unknown',
+      name: safeName,
       x: spawnX,
       y: spawnY,
-      color: color || '#4fc3f7',
+      color: safeColor,
       muted: false,
-      avatar: avatar || { face: 'smile', outfit: 'none', hat: 'none', skinTone: '#FFDAB9' },
+      avatar: (avatar && typeof avatar === 'object') ? avatar : { face: 'smile', outfit: 'none', hat: 'none', skinTone: '#FFDAB9' },
     };
 
     players.set(socket.id, player);
@@ -100,13 +112,13 @@ io.on('connection', (socket) => {
   // Handle move event
   socket.on('move', (data) => {
     const player = players.get(socket.id);
-    if (!player) return;
+    if (!player || !data || typeof data !== 'object') return;
 
     const { x, y } = data;
 
     // Basic bounds validation
     if (typeof x !== 'number' || typeof y !== 'number') return;
-    if (x < 0 || x > 1200 || y < 0 || y > 800) return;
+    if (x < 0 || x >= 1200 || y < 0 || y >= 800) return;
 
     player.x = Math.round(x);
     player.y = Math.round(y);
@@ -121,7 +133,7 @@ io.on('connection', (socket) => {
   // Handle chat event
   socket.on('chat', (data) => {
     const player = players.get(socket.id);
-    if (!player) return;
+    if (!player || !data || typeof data !== 'object') return;
 
     const { message } = data;
     if (!message || typeof message !== 'string') return;
@@ -155,7 +167,7 @@ io.on('connection', (socket) => {
   // Handle avatar update
   socket.on('avatar-update', (data) => {
     const player = players.get(socket.id);
-    if (!player || !data.avatar) return;
+    if (!player || !data || typeof data !== 'object' || !data.avatar || typeof data.avatar !== 'object') return;
     const { face, outfit, hat, skinTone } = data.avatar;
     const allowed = { face: ['smile','sad','angry','surprised','cool','wink'], outfit: ['none','suit','casual','hoodie','dress','chef'], hat: ['none','cap','crown','santa','party','witch'], skinTone: true };
     if (allowed.face.includes(face))   player.avatar.face    = face;
@@ -168,7 +180,7 @@ io.on('connection', (socket) => {
   // Handle mute toggle
   socket.on('mute-toggle', (data) => {
     const player = players.get(socket.id);
-    if (!player) return;
+    if (!player || !data || typeof data !== 'object') return;
 
     player.muted = !!data.muted;
 
@@ -224,7 +236,7 @@ io.on('connection', (socket) => {
 
   // 진행자가 참여자 강제 음소거
   socket.on('presenter-mute-user', (data) => {
-    if (presentation.presenterId !== socket.id) return;
+    if (presentation.presenterId !== socket.id || !data || typeof data !== 'object') return;
     const { targetId, muted } = data;
     const target = players.get(targetId);
     if (!target) return;
@@ -236,7 +248,7 @@ io.on('connection', (socket) => {
 
   // 진행자가 채팅 잠금
   socket.on('presenter-chat-lock', (data) => {
-    if (presentation.presenterId !== socket.id) return;
+    if (presentation.presenterId !== socket.id || !data || typeof data !== 'object') return;
     presentation.chatLocked = !!data.locked;
     io.emit('chat-locked', { locked: presentation.chatLocked });
   });
@@ -249,6 +261,7 @@ io.on('connection', (socket) => {
 
   // 화면공유 WebRTC 시그널 (진행자↔참여자 릴레이)
   socket.on('screen-signal', (data) => {
+    if (!data || typeof data !== 'object') return;
     const { to, signal } = data;
     if (!to || !signal) return;
     const targetSocket = io.sockets.sockets.get(to);
@@ -268,6 +281,7 @@ io.on('connection', (socket) => {
 
   // Handle WebRTC signaling (peer-to-peer forwarding)
   socket.on('webrtc-signal', (data) => {
+    if (!data || typeof data !== 'object') return;
     const { to, signal } = data;
     if (!to || !signal) return;
 

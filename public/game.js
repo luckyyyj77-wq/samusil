@@ -84,12 +84,12 @@ const walls = [
 
   // Internal wall: office/meeting divider (vertical, with door gap)
   { x: 472, y: 0, w: 16, h: 160 },
-  { x: 472, y: 220, w: 16, h: 160 },   // door gap at y=160~220
+  { x: 472, y: 220, w: 16, h: 152 },   // door gap at y=160~220; ends at y=372 so it doesn't overlap the meeting room exit door below
 
   // Internal wall: top zone / bottom zone (horizontal, with doors)
   { x: 0, y: 372, w: 240, h: 16 },
-  { x: 300, y: 372, w: 180, h: 16 },   // door gap at x=240~300
-  { x: 530, y: 372, w: 670, h: 16 },   // door gap at x=480~530 (meeting room exit)
+  { x: 300, y: 372, w: 188, h: 16 },   // door gap at x=240~300
+  { x: 548, y: 372, w: 652, h: 16 },   // door gap at x=488~548 (meeting room exit, 60px wide like the other doors); starts past the vertical divider (x=472~488) so the door isn't narrowed by it
 
   // Break room right wall (with door gap for lobby access)
   { x: 292, y: 388, w: 16, h: 120 },
@@ -2003,6 +2003,7 @@ function enterGame(name, color) {
 // ============================================================
 let _wasOnSpot = false;
 let _wasInPresRoom = false;
+let _wasHintPresActive = false;
 
 function _isMyPlayerInPresRoom() {
   if (!myPlayer) return false;
@@ -2020,8 +2021,9 @@ function checkPresenterSpot() {
   const dx = myPlayer.x - spotX;
   const dy = myPlayer.y - spotY;
   const onSpot = (dx * dx + dy * dy) <= (spotR + 10) * (spotR + 10);
-  if (onSpot !== _wasOnSpot) {
+  if (onSpot !== _wasOnSpot || presState.active !== _wasHintPresActive) {
     _wasOnSpot = onSpot;
+    _wasHintPresActive = presState.active;
     const hint = document.getElementById('presSpotHint');
     if (hint) hint.classList.toggle('hidden', !onSpot || presState.active);
   }
@@ -2054,6 +2056,12 @@ function updatePresenterPanel(show) {
   }
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
 // ── 참여자 목록 (진행자 패널) ────────────────────────────────
 function refreshPresenterAudienceList() {
   const list    = document.getElementById('presAudienceList');
@@ -2069,8 +2077,8 @@ function refreshPresenterAudienceList() {
     row.dataset.id = id;
     const isMuted = p.muted;
     row.innerHTML = `
-      <span class="pres-aud-dot" style="background:${p.color}"></span>
-      <span class="pres-aud-name">${p.name}</span>
+      <span class="pres-aud-dot" style="background:${escapeHtml(p.color)}"></span>
+      <span class="pres-aud-name">${escapeHtml(p.name)}</span>
       <span class="pres-aud-badge">${getZone(p.x, p.y).icon || ''}</span>
       <button class="pres-mute-btn${isMuted ? ' muted' : ''}" data-id="${id}" data-muted="${isMuted ? '1' : '0'}"
         title="${isMuted ? '음소거 해제' : '음소거'}">
@@ -2286,6 +2294,14 @@ function rebuildInternalWalls(officeW, splitH) {
 
   // Break room right wall
   walls.push({ x: ZONES.BREAK.w - wallT/2, y: splitH + wallT/2, w: wallT, h: CANVAS_H - splitH - wallT });
+
+  // 시청각실 칸막이 (고정 좌표) — 구역 리사이즈와 무관하게 항상 재생성해야
+  // 슬라이더 조작 시 시청각실이 회의실과 합쳐져 버리는 것을 방지
+  const pr = PRES_ROOM;
+  const presDoorSize = 60;
+  const presDoorY = pr.y + pr.h / 2 - presDoorSize / 2;
+  walls.push({ x: pr.x - wallT/2, y: pr.y, w: wallT, h: presDoorY - pr.y });
+  walls.push({ x: pr.x - wallT/2, y: presDoorY + presDoorSize, w: wallT, h: (pr.y + pr.h) - (presDoorY + presDoorSize) });
 }
 
 // ---- Hit test: which furniture index is at (x, y)? ----
@@ -2777,8 +2793,9 @@ function setupMobileUI() {
   document.querySelectorAll('.joy-btn').forEach(btn => {
     const dir = dirMap[btn.dataset.dir];
     if (!dir) return;
-    btn.addEventListener('touchstart', e => { e.preventDefault(); keys[dir] = true; }, { passive: false });
-    btn.addEventListener('touchend',   e => { e.preventDefault(); keys[dir] = false; }, { passive: false });
+    btn.addEventListener('touchstart',  e => { e.preventDefault(); keys[dir] = true; }, { passive: false });
+    btn.addEventListener('touchend',    e => { e.preventDefault(); keys[dir] = false; }, { passive: false });
+    btn.addEventListener('touchcancel', e => { e.preventDefault(); keys[dir] = false; }, { passive: false });
     btn.addEventListener('mousedown',  () => keys[dir] = true);
     btn.addEventListener('mouseup',    () => keys[dir] = false);
     btn.addEventListener('mouseleave', () => keys[dir] = false);
@@ -2962,11 +2979,8 @@ function setupPresentation() {
       return;
     }
 
-    // 즉시 진행자 뷰 열고 서버에 알림
-    presState.active = true;
-    presState.presenterId = myId;
-    presState.presenterName = myPlayer?.name || '';
-    updatePresenterPanel(true);
+    // 서버에 시작 요청만 보내고, 실제 UI 갱신은 서버의 'presentation-started' 응답을 받은 후 처리
+    // (동시에 두 명이 시작을 누르는 경우 서버 판정 결과와 클라이언트 상태가 어긋나는 것을 방지)
     socketPresStart();
   }
 
