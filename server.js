@@ -63,6 +63,27 @@ const players = new Map();
 const chatHistory = [];
 const MAX_CHAT_HISTORY = 50;
 
+const AVATAR_OPTIONS = {
+  face: ['smile', 'sad', 'angry', 'surprised', 'cool', 'wink'],
+  outfit: ['none', 'suit', 'casual', 'hoodie', 'dress', 'chef'],
+  hat: ['none', 'cap', 'crown', 'santa', 'party', 'witch'],
+};
+const DEFAULT_AVATAR = { face: 'smile', outfit: 'none', hat: 'none', skinTone: '#FFDAB9' };
+
+// 허용된 값만 남긴 새 객체를 반환한다. 잘못된 필드는 base 값을 유지한다.
+// 아바타는 다른 클라이언트의 렌더링에 그대로 쓰이므로 검증 없이 저장하면 안 된다.
+function sanitizeAvatar(input, base = DEFAULT_AVATAR) {
+  const source = (input && typeof input === 'object') ? input : {};
+  const avatar = { ...base };
+  for (const [field, allowed] of Object.entries(AVATAR_OPTIONS)) {
+    if (allowed.includes(source[field])) avatar[field] = source[field];
+  }
+  if (typeof source.skinTone === 'string' && /^#[0-9a-fA-F]{6}$/.test(source.skinTone)) {
+    avatar.skinTone = source.skinTone;
+  }
+  return avatar;
+}
+
 // Presentation state
 const presentation = {
   active: false,
@@ -78,7 +99,8 @@ io.on('connection', (socket) => {
     if (!data || typeof data !== 'object') return;
     const { name, color, avatar } = data;
 
-    const spawnX = 600 + Math.floor(Math.random() * 200 - 100);
+    // x는 500~679: 로비 소파(x=700부터)와 아바타 반지름만큼 떨어뜨려 스폰 시 끼이지 않게 한다
+    const spawnX = 500 + Math.floor(Math.random() * 180);
     const spawnY = 600 + Math.floor(Math.random() * 100 - 50);
 
     const safeName = (typeof name === 'string' ? name : '').trim().slice(0, 20) || 'Unknown';
@@ -91,7 +113,7 @@ io.on('connection', (socket) => {
       y: spawnY,
       color: safeColor,
       muted: false,
-      avatar: (avatar && typeof avatar === 'object') ? avatar : { face: 'smile', outfit: 'none', hat: 'none', skinTone: '#FFDAB9' },
+      avatar: sanitizeAvatar(avatar),
     };
 
     players.set(socket.id, player);
@@ -168,12 +190,7 @@ io.on('connection', (socket) => {
   socket.on('avatar-update', (data) => {
     const player = players.get(socket.id);
     if (!player || !data || typeof data !== 'object' || !data.avatar || typeof data.avatar !== 'object') return;
-    const { face, outfit, hat, skinTone } = data.avatar;
-    const allowed = { face: ['smile','sad','angry','surprised','cool','wink'], outfit: ['none','suit','casual','hoodie','dress','chef'], hat: ['none','cap','crown','santa','party','witch'], skinTone: true };
-    if (allowed.face.includes(face))   player.avatar.face    = face;
-    if (allowed.outfit.includes(outfit)) player.avatar.outfit = outfit;
-    if (allowed.hat.includes(hat))     player.avatar.hat     = hat;
-    if (typeof skinTone === 'string' && /^#[0-9a-fA-F]{6}$/.test(skinTone)) player.avatar.skinTone = skinTone;
+    player.avatar = sanitizeAvatar(data.avatar, player.avatar);
     socket.broadcast.emit('avatar-updated', { id: socket.id, avatar: player.avatar });
   });
 

@@ -1438,6 +1438,26 @@ function circleRectCollide(cx, cy, cr, rx, ry, rw, rh) {
   return (dx * dx + dy * dy) < (cr * cr);
 }
 
+// 입장 위치가 벽이나 가구와 겹치면 이동할 수 없으므로 가장 가까운 빈 곳으로 옮긴다.
+// 서버는 충돌 정보를 모르고 건물주 모드 배치는 사용자별로 다르므로 클라이언트에서 처리한다.
+function moveOutOfCollision() {
+  if (!myPlayer || !isColliding(myPlayer.x, myPlayer.y)) return;
+
+  const DIRECTIONS = 16;
+  for (let dist = 4; dist <= 400; dist += 4) {
+    for (let i = 0; i < DIRECTIONS; i++) {
+      const angle = (i / DIRECTIONS) * Math.PI * 2;
+      const x = Math.round(myPlayer.x + Math.cos(angle) * dist);
+      const y = Math.round(myPlayer.y + Math.sin(angle) * dist);
+      if (x < 0 || x >= CANVAS_W || y < 0 || y >= CANVAS_H || isColliding(x, y)) continue;
+      myPlayer.x = lastEmitX = x;
+      myPlayer.y = lastEmitY = y;
+      socketMove(x, y);
+      return;
+    }
+  }
+}
+
 // ============================================================
 // Zone Detection
 // ============================================================
@@ -1738,6 +1758,9 @@ function addSystemMessage(message) {
 // Input Handling
 // ============================================================
 document.addEventListener('keydown', (e) => {
+  // 입력창에서 누른 키는 이동으로 처리하지 않는다 (화살표 키의 커서 이동도 유지)
+  if (e.target instanceof Element && e.target.matches('input, textarea, select')) return;
+
   const key = e.key.toLowerCase();
   keys[key] = true;
 
@@ -1856,6 +1879,7 @@ function enterGame(name, color) {
     myPlayer = players.get(myId);
     if (myPlayer) {
       myPlayer.muted = true; // start muted
+      moveOutOfCollision();
     }
 
     // Load chat history

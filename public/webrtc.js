@@ -337,6 +337,12 @@ async function createPeerConnection(targetId, isInitiator) {
 
   if (localStream) addLocalTracksToPeer(targetId);
 
+  // 트랙이 없으면 negotiationneeded가 발생하지 않는다. initiator가 첫 offer를 보내도록 수신 전용
+  // transceiver를 만들어, polite 쪽이 먼저 마이크를 켜도 offer를 무한정 기다리지 않게 한다.
+  if (isInitiator && pc.getTransceivers().length === 0) {
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+  }
+
   return peer;
 }
 
