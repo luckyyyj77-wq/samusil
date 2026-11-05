@@ -454,6 +454,11 @@ function getSpeakLevel(userId) {
   return peer ? peer.speakLevel : 0;
 }
 
+// 발표 중 진행자와 나 사이의 연결인가. 이 쌍은 거리 대신 시청각실 안에 있는지로 판단한다
+function isPresenterPair(id) {
+  return presState.active && (id === presState.presenterId || myId === presState.presenterId);
+}
+
 function checkProximity() {
   if (!myId) return;
   const me = players.get(myId);
@@ -462,6 +467,11 @@ function checkProximity() {
   const nearbyIds = new Set();
   players.forEach((player, id) => {
     if (id === myId) return;
+    if (isPresenterPair(id)) {
+      const audience = id === presState.presenterId ? me : player;
+      if (isInPresRoom(audience)) nearbyIds.add(id);
+      return;
+    }
     const dist = Math.sqrt((player.x - me.x) ** 2 + (player.y - me.y) ** 2);
     // 이미 연결됐으면 DISCONNECT 거리까지, 아직 연결 안 됐으면 PROXIMITY_DISTANCE까지
     const threshold = peerConnections.has(id) ? PROXIMITY_DISCONNECT : PROXIMITY_DISTANCE;
@@ -482,7 +492,7 @@ function checkProximity() {
     const player = players.get(id);
     if (!player) return;
     const dist = Math.sqrt((player.x - me.x) ** 2 + (player.y - me.y) ** 2);
-    peer.audioEl.volume = calcVolume(dist);
+    peer.audioEl.volume = isPresenterPair(id) ? 1.0 : calcVolume(dist);
   });
 
   const el = document.getElementById('nearbyInfo');
@@ -532,6 +542,7 @@ function stopScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
     screenStream = null;
+    socketPresScreenStop();
   }
   const preview = document.getElementById('presScreenPreview');
   const standby = document.getElementById('presStandbyMsg');
@@ -541,17 +552,41 @@ function stopScreenShare() {
   }
   if (standby) standby.classList.remove('hidden');
 
-  const screenAudio = document.getElementById('presViewerAudio');
-  if (screenAudio) { screenAudio.srcObject = null; screenAudio.remove(); }
-
   screenPeers.forEach(pc => pc.close());
   screenPeers.clear();
   _screenPendingCandidates.clear();
 }
 
+function closeScreenPeer(id) {
+  const pc = screenPeers.get(id);
+  if (pc) pc.close();
+  screenPeers.delete(id);
+  _screenPendingCandidates.delete(id);
+}
+
+// 시청자 쪽 정리: 수신 연결을 닫고 화면을 대기 상태로 되돌린다
+function closeScreenView() {
+  screenPeers.forEach(pc => pc.close());
+  screenPeers.clear();
+  _screenPendingCandidates.clear();
+
+  const video = document.getElementById('presViewerVideo');
+  if (video) {
+    video.srcObject = null;
+    video.classList.add('hidden');
+  }
+  const standby = document.getElementById('viewerStandbyMsg');
+  if (standby) standby.classList.remove('hidden');
+
+  const screenAudio = document.getElementById('presViewerAudio');
+  if (screenAudio) { screenAudio.srcObject = null; screenAudio.remove(); }
+}
+
 async function _createScreenPeer(targetId, isInitiator) {
   if (screenPeers.has(targetId)) return screenPeers.get(targetId);
 
+  // 이전 연결에서 늦게 도착한 후보가 새 연결에 섞이지 않게 한다
+  _screenPendingCandidates.delete(targetId);
   const pc = new RTCPeerConnection(ICE_SERVERS);
   screenPeers.set(targetId, pc);
 
@@ -574,7 +609,14 @@ async function _createScreenPeer(targetId, isInitiator) {
 
 async function handleScreenSignal(fromId, signal) {
   if (signal.type === 'offer') {
-    // 시청자 입장: offer 수신
+    // 시청자 입장: offer 수신. 현재 진행자의 offer만 받는다
+    if (fromId !== presState.presenterId) return;
+    // 요청 후 시청을 그만둔 경우 늦게 온 offer로 소리가 재생되지 않게 한다
+    if (document.getElementById('presViewerOverlay')?.classList.contains('hidden')) {
+      socketReleaseScreen();
+      return;
+    }
+    closeScreenPeer(fromId);
     const pc = new RTCPeerConnection(ICE_SERVERS);
     screenPeers.set(fromId, pc);
 

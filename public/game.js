@@ -1882,6 +1882,8 @@ function enterGame(name, color) {
       moveOutOfCollision();
     }
 
+    applyPresentationSnapshot(data.presentation);
+
     // Load chat history
     if (data.chatHistory) {
       data.chatHistory.forEach(msg => addChatMessage(msg));
@@ -1915,6 +1917,7 @@ function enterGame(name, color) {
 
   socketCallbacks.onUserLeft = (data) => {
     if (typeof removePeerConnection === 'function') removePeerConnection(data.id);
+    closeScreenPeer(data.id);
     updatePlayerListUI();
     addSystemMessage(`${data.name || '사용자'} 님이 퇴장했습니다.`);
   };
@@ -1970,13 +1973,21 @@ function enterGame(name, color) {
 
   socket.on('screen-share-started', () => {
     console.log('[Socket] Screen share started by presenter');
-    // 시청각실 안에 있는 사람만 즉시 화면공유 요청
-    if (_isMyPlayerInPresRoom() && presState.presenterId !== myId) {
-      if (typeof socketRequestScreen === 'function') {
-        console.log('[Socket] Requesting screen share...');
-        socketRequestScreen();
-      }
+    // 시청 화면을 열어둔 사람만 즉시 화면공유 요청 (나가기를 누른 사람은 제외)
+    const overlay = document.getElementById('presViewerOverlay');
+    if (overlay && !overlay.classList.contains('hidden') && presState.presenterId !== myId) {
+      console.log('[Socket] Requesting screen share...');
+      socketRequestScreen();
     }
+  });
+
+  socket.on('screen-share-stopped', () => {
+    closeScreenView();
+  });
+
+  // 진행자: 참여자가 시청을 그만둠
+  socket.on('viewer-released-screen', (data) => {
+    closeScreenPeer(data.viewerId);
   });
 
   socket.on('screen-signal', (data) => {
@@ -2029,12 +2040,33 @@ let _wasOnSpot = false;
 let _wasInPresRoom = false;
 let _wasHintPresActive = false;
 
-function _isMyPlayerInPresRoom() {
-  if (!myPlayer) return false;
+function isInPresRoom(player) {
   return (
-    myPlayer.x >= PRES_ROOM.x && myPlayer.x <= PRES_ROOM.x + PRES_ROOM.w &&
-    myPlayer.y >= PRES_ROOM.y && myPlayer.y <= PRES_ROOM.y + PRES_ROOM.h
+    player.x >= PRES_ROOM.x && player.x <= PRES_ROOM.x + PRES_ROOM.w &&
+    player.y >= PRES_ROOM.y && player.y <= PRES_ROOM.y + PRES_ROOM.h
   );
+}
+
+function _isMyPlayerInPresRoom() {
+  return !!myPlayer && isInPresRoom(myPlayer);
+}
+
+// 입장과 재접속 시 서버 상태로 맞춘다. 재접속이면 socket id가 바뀌어 이전 진행자·시청 화면은 더 이상 유효하지 않다
+function applyPresentationSnapshot(snapshot) {
+  updatePresenterPanel(false);
+  showPresViewerOverlay(false);
+  stopScreenShare();
+
+  presState.active = !!(snapshot && snapshot.active);
+  presState.presenterId = presState.active ? snapshot.presenterId : null;
+  presState.presenterName = presState.active ? snapshot.presenterName : '';
+  presState.chatLocked = presState.active && !!snapshot.chatLocked;
+  _wasInPresRoom = false;
+  updateChatLockUI(presState.chatLocked);
+
+  if (presState.active) {
+    addSystemMessage(`🎬 ${presState.presenterName}님이 시청각실에서 발표 중입니다.`);
+  }
 }
 
 function checkPresenterSpot() {
@@ -2062,6 +2094,7 @@ function checkPresenterSpot() {
     socketRequestScreen();
   } else {
     showPresViewerOverlay(false);
+    socketReleaseScreen();
   }
 }
 
@@ -2136,6 +2169,7 @@ function showPresViewerOverlay(show) {
     _syncViewerChat();
   } else {
     _presTimerStop();
+    closeScreenView();
   }
 }
 
@@ -3106,7 +3140,8 @@ function setupPresentation() {
 
   // ── 시청자 뷰: 나가기 ───────────────────────────────────
   document.getElementById('presExitViewBtn')?.addEventListener('click', () => {
-    document.getElementById('presViewerOverlay')?.classList.add('hidden');
+    showPresViewerOverlay(false);
+    socketReleaseScreen();
     // _wasInPresRoom = false; // 위치가 여전히 방 안이면 루프에서 다시 켜짐 -> 수동 닫기 시에는 위치가 바뀌기 전까지 대기
     addSystemMessage('🎬 시청을 종료했습니다. 다시 보려면 시청각실을 나갔다 들어오세요.');
   });

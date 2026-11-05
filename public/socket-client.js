@@ -143,12 +143,33 @@ function socketAvatarUpdate(avatar) {
 
 let lastMoveTime = 0;
 const MOVE_THROTTLE_MS = 50;
+let pendingMove = null;
+let pendingMoveTimer = null;
 
+// 제한 시간 안에 들어온 위치는 버리지 않고 마지막 값을 나중에 보낸다.
+// 멈춘 위치가 누락되면 서버와 다른 사용자가 아는 위치가 실제와 계속 달라진다.
 function socketMove(x, y) {
   if (!socket) return;
   const now = Date.now();
-  if (now - lastMoveTime < MOVE_THROTTLE_MS) return;
+  const elapsed = now - lastMoveTime;
+  if (elapsed < MOVE_THROTTLE_MS) {
+    pendingMove = { x, y };
+    if (!pendingMoveTimer) pendingMoveTimer = setTimeout(flushPendingMove, MOVE_THROTTLE_MS - elapsed);
+    return;
+  }
+  pendingMove = null;
   lastMoveTime = now;
+  socket.emit('move', { x, y });
+}
+
+// 위치에 따라 서버나 진행자가 판단하는 요청은 이 함수를 먼저 호출해 순서를 보장한다
+function flushPendingMove() {
+  clearTimeout(pendingMoveTimer);
+  pendingMoveTimer = null;
+  if (!pendingMove || !socket) return;
+  const { x, y } = pendingMove;
+  pendingMove = null;
+  lastMoveTime = Date.now();
   socket.emit('move', { x, y });
 }
 
@@ -167,13 +188,15 @@ function socketWebRTCSignal(toId, signal) {
   socket.emit('webrtc-signal', { to: toId, signal });
 }
 
-function socketPresStart()                    { if (!socket) return; socket.emit('presentation-start'); }
+function socketPresStart()                    { if (!socket) return; flushPendingMove(); socket.emit('presentation-start'); }
 function socketPresEnd()                      { if (!socket) return; socket.emit('presentation-end'); }
 function socketPresMuteUser(targetId, muted)  { if (!socket) return; socket.emit('presenter-mute-user', { targetId, muted }); }
 function socketPresChatLock(locked)           { if (!socket) return; socket.emit('presenter-chat-lock', { locked }); }
 function socketPresScreenStart()             { if (!socket) return; socket.emit('presenter-screen-start'); }
 function socketScreenSignal(toId, signal)     { if (!socket) return; socket.emit('screen-signal', { to: toId, signal }); }
-function socketRequestScreen()               { if (!socket) return; socket.emit('request-screen'); }
+function socketPresScreenStop()              { if (!socket) return; socket.emit('presenter-screen-stop'); }
+function socketRequestScreen()               { if (!socket) return; flushPendingMove(); socket.emit('request-screen'); }
+function socketReleaseScreen()               { if (!socket) return; socket.emit('release-screen'); }
 
 // ============================================================
 // UI helpers

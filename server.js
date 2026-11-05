@@ -91,6 +91,35 @@ const presentation = {
   chatLocked: false,
 };
 
+// 진행자 스팟. public/game.js의 PRES_ROOM(spotX, spotY)과 클라이언트 판정 반경(spotR + 10)과 같은 값이어야 한다
+const PRES_SPOT = { x: 990, y: 178, r: 32 };
+
+function isOnPresSpot(player) {
+  const dx = player.x - PRES_SPOT.x;
+  const dy = player.y - PRES_SPOT.y;
+  return dx * dx + dy * dy <= PRES_SPOT.r * PRES_SPOT.r;
+}
+
+function presentationSnapshot() {
+  const presenter = players.get(presentation.presenterId);
+  return {
+    active: presentation.active,
+    presenterId: presentation.presenterId,
+    presenterName: presenter ? presenter.name : '',
+    chatLocked: presentation.chatLocked,
+  };
+}
+
+function sendSystemMessage(socket, message) {
+  socket.emit('chat-message', {
+    id: 'system',
+    name: '시스템',
+    color: '#ff4444',
+    message,
+    timestamp: Date.now()
+  });
+}
+
 io.on('connection', (socket) => {
   console.log(`[${new Date().toISOString()}] Client connected: ${socket.id}`);
 
@@ -122,7 +151,8 @@ io.on('connection', (socket) => {
     socket.emit('init', {
       myId: socket.id,
       players: Array.from(players.values()),
-      chatHistory: chatHistory
+      chatHistory: chatHistory,
+      presentation: presentationSnapshot()
     });
 
     // Broadcast new user to others
@@ -213,20 +243,20 @@ io.on('connection', (socket) => {
   socket.on('presentation-start', () => {
     console.log(`[Presentation] start request from ${socket.id}, active=${presentation.active}, presenter=${presentation.presenterId}`);
     
-    // 이미 누군가 발표 중이면 차단 (본인인 경우는 재진입 허용)
-    if (presentation.active && presentation.presenterId !== socket.id) {
-      socket.emit('chat-message', {
-        id: 'system',
-        name: '시스템',
-        color: '#ff4444',
-        message: '이미 다른 사용자가 발표 중입니다.',
-        timestamp: Date.now()
-      });
+    const player = players.get(socket.id);
+    if (!player) { console.log('[Presentation] player not found'); return; }
+
+    if (presentation.active) {
+      if (presentation.presenterId !== socket.id) {
+        sendSystemMessage(socket, '이미 다른 사용자가 발표 중입니다.');
+      }
       return;
     }
 
-    const player = players.get(socket.id);
-    if (!player) { console.log('[Presentation] player not found'); return; }
+    if (!isOnPresSpot(player)) {
+      sendSystemMessage(socket, '발표는 시청각실 앞 진행자 스팟에서만 시작할 수 있습니다.');
+      return;
+    }
 
     presentation.active = true;
     presentation.presenterId = socket.id;
@@ -276,11 +306,19 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('screen-share-started');
   });
 
-  // 화면공유 WebRTC 시그널 (진행자↔참여자 릴레이)
+  // 진행자가 화면 공유 중지 알림
+  socket.on('presenter-screen-stop', () => {
+    if (presentation.presenterId !== socket.id) return;
+    socket.broadcast.emit('screen-share-stopped');
+  });
+
+  // 화면공유 WebRTC 시그널 (진행자↔참여자 릴레이). 진행자가 낀 시그널만 전달한다
   socket.on('screen-signal', (data) => {
     if (!data || typeof data !== 'object') return;
     const { to, signal } = data;
     if (!to || !signal) return;
+    if (!presentation.presenterId) return;
+    if (socket.id !== presentation.presenterId && to !== presentation.presenterId) return;
     const targetSocket = io.sockets.sockets.get(to);
     if (targetSocket) {
       targetSocket.emit('screen-signal', { from: socket.id, signal });
@@ -293,6 +331,15 @@ io.on('connection', (socket) => {
     const presenterSocket = io.sockets.sockets.get(presentation.presenterId);
     if (presenterSocket) {
       presenterSocket.emit('viewer-wants-screen', { viewerId: socket.id });
+    }
+  });
+
+  // 참여자가 시청을 그만둠 (방 퇴장, 나가기 버튼)
+  socket.on('release-screen', () => {
+    if (!presentation.active || !presentation.presenterId) return;
+    const presenterSocket = io.sockets.sockets.get(presentation.presenterId);
+    if (presenterSocket) {
+      presenterSocket.emit('viewer-released-screen', { viewerId: socket.id });
     }
   });
 
